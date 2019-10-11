@@ -39,14 +39,6 @@
 #define NEW_PREFAB_SYSTEM
 #endif
 
-#if UNITY_2018 || UNITY_2019 || UNITY_2018_3_OR_NEWER
-#define NEWHIERARCHYWINDOWCALLBACKS
-#endif
-
-#if UNITY_2018_3_OR_NEWER
-#define NEW_PREFERENCES_SETTINGS_PROVIDER
-#endif
-
 using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
@@ -54,17 +46,16 @@ using System.IO;
 using System.Text;
 using System.Linq;
 using System.Reflection;
-using System.Globalization;
+
+using CompatibilityProblemInfo = Spine.Unity.SkeletonDataCompatibility.CompatibilityProblemInfo;
 
 namespace Spine.Unity.Editor {
-	
+	using PathAndProblemInfo = System.Collections.Generic.KeyValuePair<string, CompatibilityProblemInfo>;
+
 	public static class AssetUtility {
+
 		public const string SkeletonDataSuffix = "_SkeletonData";
 		public const string AtlasSuffix = "_Atlas";
-
-		static readonly int[][] compatibleBinaryVersions = { new[] { 3, 8, 0 } };
-		static readonly int[][] compatibleJsonVersions = { new[] { 3, 8, 0 } };
-		//static bool isFixVersionRequired = false;
 
 		/// HACK: This list keeps the asset reference temporarily during importing.
 		///
@@ -133,7 +124,11 @@ namespace Spine.Unity.Editor {
 			if (root == null || !root.ContainsKey("skins"))
 				return requiredPaths;
 
-			foreach (Dictionary<string, object> skinMap in (List<object>)root["skins"]) {
+			var skinsList = root["skins"] as List<object>;
+			if (skinsList == null)
+				return requiredPaths;
+
+			foreach (Dictionary<string, object> skinMap in skinsList) {
 				if (!skinMap.ContainsKey("attachments"))
 					continue;
 				foreach (var slot in (Dictionary<string, object>)skinMap["attachments"]) {
@@ -251,7 +246,8 @@ namespace Spine.Unity.Editor {
 		public static void ImportSpineContent (string[] imported, bool reimport = false) {
 			var atlasPaths = new List<string>();
 			var imagePaths = new List<string>();
-			var skeletonPaths = new List<string>();
+			var skeletonPaths = new List<PathAndProblemInfo>();
+			CompatibilityProblemInfo compatibilityProblemInfo = null;
 
 			foreach (string str in imported) {
 				string extension = Path.GetExtension(str).ToLower();
@@ -271,13 +267,13 @@ namespace Spine.Unity.Editor {
 						break;
 					case ".json":
 						var jsonAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(str);
-						if (jsonAsset != null && IsSpineData(jsonAsset))
-							skeletonPaths.Add(str);
+						if (jsonAsset != null && IsSpineData(jsonAsset, out compatibilityProblemInfo))
+							skeletonPaths.Add(new PathAndProblemInfo(str, compatibilityProblemInfo));
 						break;
 					case ".bytes":
 						if (str.ToLower().EndsWith(".skel.bytes", System.StringComparison.Ordinal)) {
-							if (IsSpineData(AssetDatabase.LoadAssetAtPath<TextAsset>(str)))
-								skeletonPaths.Add(str);
+							if (IsSpineData(AssetDatabase.LoadAssetAtPath<TextAsset>(str), out compatibilityProblemInfo))
+								skeletonPaths.Add(new PathAndProblemInfo(str, compatibilityProblemInfo));
 						}
 						break;
 				}
@@ -295,24 +291,32 @@ namespace Spine.Unity.Editor {
 
 			// Import skeletons and match them with atlases.
 			bool abortSkeletonImport = false;
-			foreach (string skeletonPath in skeletonPaths) {
+			foreach (var skeletonPathEntry in skeletonPaths) {
+				string skeletonPath = skeletonPathEntry.Key;
+				var compatibilityProblems = skeletonPathEntry.Value;
 				if (skeletonPath.StartsWith("Packages"))
 					continue;
 				if (!reimport && CheckForValidSkeletonData(skeletonPath)) {
-					ReloadSkeletonData(skeletonPath);
+					ReloadSkeletonData(skeletonPath, compatibilityProblems);
+					continue;
+				}
+
+				var loadedAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(skeletonPath);
+				if (compatibilityProblems != null) {
+					IngestIncompatibleSpineProject(loadedAsset, compatibilityProblems);
 					continue;
 				}
 
 				string dir = Path.GetDirectoryName(skeletonPath);
 
 #if SPINE_TK2D
-				IngestSpineProject(AssetDatabase.LoadAssetAtPath<TextAsset>(skeletonPath), null);
+				IngestSpineProject(loadedAsset, null);
 #else
 				var localAtlases = FindAtlasesAtPath(dir);
 				var requiredPaths = GetRequiredAtlasRegions(skeletonPath);
 				var atlasMatch = GetMatchingAtlas(requiredPaths, localAtlases);
 				if (atlasMatch != null || requiredPaths.Count == 0) {
-					IngestSpineProject(AssetDatabase.LoadAssetAtPath<TextAsset>(skeletonPath), atlasMatch);
+					IngestSpineProject(loadedAsset, atlasMatch);
 				} else {
 					SkeletonImportDialog(skeletonPath, localAtlases, requiredPaths, ref abortSkeletonImport);
 				}
@@ -326,16 +330,16 @@ namespace Spine.Unity.Editor {
 			foreach (var inspector in skeletonDataInspectors) {
 				inspector.UpdateSkeletonData();
 			}
-				
+
 			// Any post processing of images
 
-			// Under some circumstances (e.g. on first import) SkeletonGraphic objects 
+			// Under some circumstances (e.g. on first import) SkeletonGraphic objects
 			// have their skeletonGraphic.skeletonDataAsset reference corrupted
 			// by the instance of the ScriptableObject being destroyed but still assigned.
 			// Here we restore broken skeletonGraphic.skeletonDataAsset references.
 			var skeletonGraphicObjects = Resources.FindObjectsOfTypeAll(typeof(SkeletonGraphic)) as SkeletonGraphic[];
 			foreach (var skeletonGraphic in skeletonGraphicObjects) {
-					
+
 				if (skeletonGraphic.skeletonDataAsset == null) {
 					var skeletonGraphicID = skeletonGraphic.GetInstanceID();
 					if (SpineEditorUtilities.DataReloadHandler.savedSkeletonDataAssetAtSKeletonGraphicID.ContainsKey(skeletonGraphicID)) {
@@ -345,8 +349,8 @@ namespace Spine.Unity.Editor {
 				}
 			}
 		}
-			
-		static void ReloadSkeletonData (string skeletonJSONPath) {
+
+		static void ReloadSkeletonData (string skeletonJSONPath, CompatibilityProblemInfo compatibilityProblemInfo) {
 			string dir = Path.GetDirectoryName(skeletonJSONPath);
 			TextAsset textAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(skeletonJSONPath);
 			DirectoryInfo dirInfo = new DirectoryInfo(dir);
@@ -360,6 +364,11 @@ namespace Spine.Unity.Editor {
 					if (skeletonDataAsset.skeletonJSON == textAsset) {
 						if (Selection.activeObject == skeletonDataAsset)
 							Selection.activeObject = null;
+
+						if (compatibilityProblemInfo != null) {
+							SkeletonDataCompatibility.DisplayCompatibilityProblem(compatibilityProblemInfo.DescriptionString(), textAsset);
+							return;
+						}
 
 						Debug.LogFormat("Changes to '{0}' detected. Clearing SkeletonDataAsset: {1}", skeletonJSONPath, localPath);
 						skeletonDataAsset.Clear();
@@ -460,24 +469,8 @@ namespace Spine.Unity.Editor {
 			for (int i = 0; i < pageFiles.Count; i++) {
 				string texturePath = assetPath + "/" + pageFiles[i];
 				Texture2D texture = (Texture2D)AssetDatabase.LoadAssetAtPath(texturePath, typeof(Texture2D));
-
 				if (SpineEditorUtilities.Preferences.setTextureImporterSettings) {
-					TextureImporter texImporter = (TextureImporter)TextureImporter.GetAtPath(texturePath);
-					if (texImporter == null) {
-						Debug.LogWarning(string.Format("{0} ::: Texture asset \"{1}\" not found. Skipping. Please check your atlas file for renamed files.", atlasAsset.name, texturePath));
-						continue;
-					}
-
-					texImporter.textureCompression = TextureImporterCompression.Uncompressed;
-					texImporter.alphaSource = TextureImporterAlphaSource.FromInput;
-					texImporter.mipmapEnabled = false;
-					texImporter.alphaIsTransparency = false; // Prevent the texture importer from applying bleed to the transparent parts for PMA.
-					texImporter.spriteImportMode = SpriteImportMode.None;
-					texImporter.maxTextureSize = 2048;
-
-					EditorUtility.SetDirty(texImporter);
-					AssetDatabase.ImportAsset(texturePath);
-					AssetDatabase.SaveAssets();
+					SetDefaultTextureSettingsIfNew(texturePath, atlasAsset);
 				}
 
 				string pageName = Path.GetFileNameWithoutExtension(pageFiles[i]);
@@ -496,7 +489,9 @@ namespace Spine.Unity.Editor {
 					vestigialMaterials.Remove(mat);
 				}
 
-				mat.mainTexture = texture;
+				if (texture != null)
+					mat.mainTexture = texture;
+
 				EditorUtility.SetDirty(mat);
 				AssetDatabase.SaveAssets();
 
@@ -550,13 +545,71 @@ namespace Spine.Unity.Editor {
 			protectFromStackGarbageCollection.Remove(atlasAsset);
 			return (AtlasAssetBase)AssetDatabase.LoadAssetAtPath(atlasPath, typeof(AtlasAssetBase));
 		}
+
+		static bool SetDefaultTextureSettingsIfNew (string texturePath, SpineAtlasAsset atlasAsset) {
+			TextureImporter texImporter = (TextureImporter)TextureImporter.GetAtPath(texturePath);
+			if (texImporter == null) {
+				Debug.LogWarning(string.Format("{0}: Texture asset \"{1}\" not found. Skipping. Please check your atlas file for renamed files.", atlasAsset.name, texturePath));
+				return false;
+			}
+
+		#if UNITY_2018_1_OR_NEWER
+			bool customTextureSettingsExist = !texImporter.importSettingsMissing;
+		#else
+			// unfortunately, importSettingsMissing is not available in Unity 2017,
+			// so we check if any settings deviate from Unity's default texture settings.
+			bool customTextureSettingsExist = texImporter.mipmapEnabled != true ||
+				texImporter.maxTextureSize != 2048 ||
+				texImporter.alphaIsTransparency != true ||
+				texImporter.wrapMode != TextureWrapMode.Repeat ||
+				texImporter.filterMode != FilterMode.Bilinear;
+		#endif
+			if (customTextureSettingsExist)
+				return false;
+
+			texImporter.textureCompression = TextureImporterCompression.Uncompressed;
+			texImporter.alphaSource = TextureImporterAlphaSource.FromInput;
+			texImporter.mipmapEnabled = false;
+			texImporter.alphaIsTransparency = false; // Prevent the texture importer from applying bleed to the transparent parts for PMA.
+			texImporter.spriteImportMode = SpriteImportMode.None;
+			texImporter.maxTextureSize = 2048;
+
+			EditorUtility.SetDirty(texImporter);
+			AssetDatabase.ImportAsset(texturePath);
+			AssetDatabase.SaveAssets();
+			return true;
+		}
 #endregion
 
 #region Import SkeletonData (json or binary)
-		internal static SkeletonDataAsset IngestSpineProject (TextAsset spineJson, params AtlasAssetBase[] atlasAssets) {
+		internal static string GetSkeletonDataAssetFilePath(TextAsset spineJson) {
 			string primaryName = Path.GetFileNameWithoutExtension(spineJson.name);
 			string assetPath = Path.GetDirectoryName(AssetDatabase.GetAssetPath(spineJson));
-			string filePath = assetPath + "/" + primaryName + SkeletonDataSuffix + ".asset";
+			return assetPath + "/" + primaryName + SkeletonDataSuffix + ".asset";
+		}
+
+		internal static SkeletonDataAsset IngestIncompatibleSpineProject(TextAsset spineJson,
+			CompatibilityProblemInfo compatibilityProblemInfo) {
+
+			string filePath = GetSkeletonDataAssetFilePath(spineJson);
+
+			if (spineJson == null)
+				return null;
+
+			SkeletonDataAsset skeletonDataAsset = (SkeletonDataAsset)AssetDatabase.LoadAssetAtPath(filePath, typeof(SkeletonDataAsset));
+			if (skeletonDataAsset == null) {
+				skeletonDataAsset = SkeletonDataAsset.CreateInstance<SkeletonDataAsset>();
+				skeletonDataAsset.skeletonJSON = spineJson;
+				AssetDatabase.CreateAsset(skeletonDataAsset, filePath);
+			}
+			EditorUtility.SetDirty(skeletonDataAsset);
+			
+			SkeletonDataCompatibility.DisplayCompatibilityProblem(compatibilityProblemInfo.DescriptionString(), spineJson);
+			return skeletonDataAsset;
+		}
+
+		internal static SkeletonDataAsset IngestSpineProject (TextAsset spineJson, params AtlasAssetBase[] atlasAssets) {
+			string filePath = GetSkeletonDataAssetFilePath(spineJson);
 
 #if SPINE_TK2D
 			if (spineJson != null) {
@@ -630,76 +683,10 @@ namespace Spine.Unity.Editor {
 			return false;
 		}
 
-		public static bool IsSpineData (TextAsset asset) {
-			if (asset == null)
-				return false;
-
-			bool isSpineData = false;
-			string rawVersion = null;
-
-			int[][] compatibleVersions;
-			if (asset.name.Contains(".skel")) {
-				try {
-					using (var memStream = new MemoryStream(asset.bytes)) {
-						rawVersion = SkeletonBinary.GetVersionString(memStream);
-					}
-					isSpineData = !(string.IsNullOrEmpty(rawVersion));
-					compatibleVersions = compatibleBinaryVersions;
-				} catch (System.Exception e) {
-					Debug.LogErrorFormat("Failed to read '{0}'. It is likely not a binary Spine SkeletonData file.\n{1}", asset.name, e);
-					return false;
-				}
-			} else {
-				object obj = Json.Deserialize(new StringReader(asset.text));
-				if (obj == null) {
-					Debug.LogErrorFormat("'{0}' is not valid JSON.", asset.name);
-					return false;
-				}
-
-				var root = obj as Dictionary<string, object>;
-				if (root == null) {
-					Debug.LogError("Parser returned an incorrect type.");
-					return false;
-				}
-
-				isSpineData = root.ContainsKey("skeleton");
-				if (isSpineData) {
-					var skeletonInfo = (Dictionary<string, object>)root["skeleton"];
-					object jv;
-					skeletonInfo.TryGetValue("spine", out jv);
-					rawVersion = jv as string;
-				}
-
-				compatibleVersions = compatibleJsonVersions;
-			}
-
-			// Version warning
-			if (isSpineData) {
-				string primaryRuntimeVersionDebugString = compatibleVersions[0][0] + "." + compatibleVersions[0][1];
-
-				if (string.IsNullOrEmpty(rawVersion)) {
-					Debug.LogWarningFormat("Skeleton '{0}' has no version information. It may be incompatible with your runtime version: spine-unity v{1}", asset.name, primaryRuntimeVersionDebugString);
-				} else {
-					string[] versionSplit = rawVersion.Split('.');
-					bool match = false;
-					foreach (var version in compatibleVersions) {
-						bool primaryMatch = version[0] == int.Parse(versionSplit[0], CultureInfo.InvariantCulture);
-						bool secondaryMatch = version[1] == int.Parse(versionSplit[1], CultureInfo.InvariantCulture);
-
-						// if (isFixVersionRequired) secondaryMatch &= version[2] <= int.Parse(jsonVersionSplit[2], CultureInfo.InvariantCulture);
-
-						if (primaryMatch && secondaryMatch) {
-							match = true;
-							break;
-						}
-					}
-
-					if (!match)
-						Debug.LogWarningFormat("Skeleton '{0}' (exported with Spine {1}) may be incompatible with your runtime version: spine-csharp v{2}", asset.name, rawVersion, primaryRuntimeVersionDebugString);
-				}
-			}
-
-			return isSpineData;
+		public static bool IsSpineData (TextAsset asset, out CompatibilityProblemInfo compatibilityProblemInfo) {
+			SkeletonDataCompatibility.VersionInfo fileVersion = SkeletonDataCompatibility.GetVersionInfo(asset);
+			compatibilityProblemInfo = SkeletonDataCompatibility.GetCompatibilityProblemInfo(fileVersion);
+			return fileVersion != null;
 		}
 #endregion
 
@@ -958,7 +945,7 @@ namespace Spine.Unity.Editor {
 
 			return newSkeletonAnimation;
 		}
-			
+
 		/// <summary>Handles creating a new GameObject in the Unity Editor. This uses the new ObjectFactory API where applicable.</summary>
 		public static GameObject NewGameObject (string name) {
 			#if NEW_PREFAB_SYSTEM

@@ -37,11 +37,15 @@ namespace Spine {
 	public class Animation {
 		internal String name;
 		internal ExposedList<Timeline> timelines;
+		internal HashSet<int> timelineIds;
 		internal float duration;
 
 		public Animation (string name, ExposedList<Timeline> timelines, float duration) {
 			if (name == null) throw new ArgumentNullException("name", "name cannot be null.");
 			if (timelines == null) throw new ArgumentNullException("timelines", "timelines cannot be null.");
+			this.timelineIds = new HashSet<int>();
+			foreach (Timeline timeline in timelines)
+				timelineIds.Add(timeline.PropertyId);
 			this.name = name;
 			this.timelines = timelines;
 			this.duration = duration;
@@ -54,6 +58,11 @@ namespace Spine {
 
 		/// <summary>The animation's name, which is unique across all animations in the skeleton.</summary>
 		public string Name { get { return name; } }
+
+		/// <summary>Whether the timeline with the property id is contained in this animation.</summary>
+		public bool HasTimeline (int id) {
+			return timelineIds.Contains(id);
+		}
 
 		/// <summary>Applies all the animation's timelines to the specified skeleton.</summary>
 		/// <seealso cref="Timeline.Apply(Skeleton, float, float, ExposedList, float, MixBlend, MixDirection)"/>
@@ -426,7 +435,7 @@ namespace Spine {
 		/// <summary>The time in seconds, x, and y values for each key frame.</summary>
 		public float[] Frames { get { return frames; } set { frames = value; } }
 
-		
+
 		/// <summary>Sets the time in seconds, x, and y values for the specified key frame.</summary>
 		public void SetFrame (int frameIndex, float time, float x, float y) {
 			frameIndex *= ENTRIES;
@@ -493,11 +502,11 @@ namespace Spine {
 		public ScaleTimeline (int frameCount)
 			: base(frameCount) {
 		}
-		
+
 		override public int PropertyId {
 			get { return ((int)TimelineType.Scale << 24) + boneIndex; }
 		}
-		
+
 		override public void Apply (Skeleton skeleton, float lastTime, float time, ExposedList<Event> firedEvents, float alpha, MixBlend blend,
 									MixDirection direction) {
 			Bone bone = skeleton.bones.Items[boneIndex];
@@ -598,7 +607,7 @@ namespace Spine {
 		public ShearTimeline (int frameCount)
 			: base(frameCount) {
 		}
-		
+
 		override public int PropertyId {
 			get { return ((int)TimelineType.Shear << 24) + boneIndex; }
 		}
@@ -952,7 +961,7 @@ namespace Spine {
 
 		/// <summary>The attachment name for each key frame. May contain null values to clear the attachment.</summary>
 		public string[] AttachmentNames { get { return attachmentNames; } set { attachmentNames = value; } }
-		
+
 		/// <summary>Sets the time in seconds and the attachment name for the specified key frame.</summary>
 		public void SetFrame (int frameIndex, float time, String attachmentName) {
 			frames[frameIndex] = time;
@@ -1019,13 +1028,13 @@ namespace Spine {
 		}
 		/// <summary>The attachment that will be deformed.</summary>
 		public VertexAttachment Attachment { get { return attachment; } set { attachment = value; } }
-		
+
 		/// <summary>The time in seconds for each key frame.</summary>
 		public float[] Frames { get { return frames; } set { frames = value; } }
 
 		/// <summary>The vertices for each key frame.</summary>
 		public float[][] Vertices { get { return frameVertices; } set { frameVertices = value; } }
-		
+
 
 		/// <summary>Sets the time in seconds and the vertices for the specified key frame.</summary>
 		/// <param name="vertices">Vertex positions for an unweighted VertexAttachment, or deform offsets if it has weights.</param>
@@ -1050,7 +1059,7 @@ namespace Spine {
 			float[] deform;
 
 			if (time < frames[0]) {  // Time is before first frame.
-				
+
 				switch (blend) {
 				case MixBlend.Setup:
 					deformArray.Clear();
@@ -1250,7 +1259,7 @@ namespace Spine {
 
 		/// <summary>The event for each key frame.</summary>
 		public Event[] Events { get { return events; } set { events = value; } }
-		
+
 		/// <summary>Sets the time in seconds and the event for the specified key frame.</summary>
 		public void SetFrame (int frameIndex, Event e) {
 			frames[frameIndex] = e.Time;
@@ -1339,7 +1348,7 @@ namespace Spine {
 				frame = frames.Length - 1;
 			else
 				frame = Animation.BinarySearch(frames, time) - 1;
-			
+
 			int[] drawOrderToSetupIndex = drawOrders[frame];
 			if (drawOrderToSetupIndex == null) {
 				Array.Copy(slots.Items, 0, drawOrder.Items, 0, slots.Count);
@@ -1367,7 +1376,7 @@ namespace Spine {
 			: base(frameCount) {
 			frames = new float[frameCount * ENTRIES];
 		}
-		
+
 		override public int PropertyId {
 			get { return ((int)TimelineType.IkConstraint << 24) + ikConstraintIndex; }
 		}

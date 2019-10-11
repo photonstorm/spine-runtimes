@@ -39,6 +39,8 @@
 
 #include <spine/Slot.h>
 
+#include <float.h>
+
 using namespace spine;
 
 SkeletonBounds::SkeletonBounds() : _minX(0), _minY(0), _maxX(0), _maxY(0) {
@@ -60,9 +62,7 @@ void SkeletonBounds::update(Skeleton &skeleton, bool updateAabb) {
 		if (!slot->getBone().isActive()) continue;
 
 		Attachment *attachment = slot->getAttachment();
-		if (attachment == NULL || !attachment->getRTTI().instanceOf(BoundingBoxAttachment::rtti)) {
-			continue;
-		}
+		if (attachment == NULL || !attachment->getRTTI().instanceOf(BoundingBoxAttachment::rtti)) continue;
 		BoundingBoxAttachment *boundingBox = static_cast<BoundingBoxAttachment *>(attachment);
 		_boundingBoxes.add(boundingBox);
 
@@ -71,9 +71,8 @@ void SkeletonBounds::update(Skeleton &skeleton, bool updateAabb) {
 		if (poolCount > 0) {
 			polygonP = _polygonPool[poolCount - 1];
 			_polygonPool.removeAt(poolCount - 1);
-		} else {
+		} else
 			polygonP = new(__FILE__, __LINE__) Polygon();
-		}
 
 		_polygons.add(polygonP);
 
@@ -87,13 +86,13 @@ void SkeletonBounds::update(Skeleton &skeleton, bool updateAabb) {
 		boundingBox->computeWorldVertices(*slot, polygon._vertices);
 	}
 
-	if (updateAabb) {
+	if (updateAabb)
 		aabbCompute();
-	} else {
-		_minX = std::numeric_limits<float>::min();
-		_minY = std::numeric_limits<float>::min();
-		_maxX = std::numeric_limits<float>::max();
-		_maxY = std::numeric_limits<float>::max();
+	else {
+		_minX = FLT_MIN;
+		_minY = FLT_MIN;
+		_maxX = FLT_MAX;
+		_maxY = FLT_MAX;
 	}
 }
 
@@ -114,21 +113,13 @@ bool SkeletonBounds::aabbintersectsSegment(float x1, float y1, float x2, float y
 
 	float m = (y2 - y1) / (x2 - x1);
 	float y = m * (minX - x1) + y1;
-	if (y > minY && y < maxY) {
-		return true;
-	}
+	if (y > minY && y < maxY) return true;
 	y = m * (maxX - x1) + y1;
-	if (y > minY && y < maxY) {
-		return true;
-	}
+	if (y > minY && y < maxY) return true;
 	float x = (minY - y1) / m + x1;
-	if (x > minX && x < maxX) {
-		return true;
-	}
+	if (x > minX && x < maxX) return true;
 	x = (maxY - y1) / m + x1;
-	if (x > minX && x < maxX) {
-		return true;
-	}
+	if (x > minX && x < maxX) return true;
 	return false;
 }
 
@@ -157,21 +148,14 @@ bool SkeletonBounds::containsPoint(Polygon *polygon, float x, float y) {
 }
 
 BoundingBoxAttachment *SkeletonBounds::containsPoint(float x, float y) {
-	for (size_t i = 0, n = _polygons.size(); i < n; ++i) {
-		if (containsPoint(_polygons[i], x, y)) {
-			return _boundingBoxes[i];
-		}
-	}
-
+	for (size_t i = 0, n = _polygons.size(); i < n; ++i)
+		if (containsPoint(_polygons[i], x, y)) return _boundingBoxes[i];
 	return NULL;
 }
 
 BoundingBoxAttachment *SkeletonBounds::intersectsSegment(float x1, float y1, float x2, float y2) {
-	for (size_t i = 0, n = _polygons.size(); i < n; ++i) {
-		if (intersectsSegment(_polygons[i], x1, y1, x2, y2)) {
-			return _boundingBoxes[i];
-		}
-	}
+	for (size_t i = 0, n = _polygons.size(); i < n; ++i)
+		if (intersectsSegment(_polygons[i], x1, y1, x2, y2)) return _boundingBoxes[i];
 	return NULL;
 }
 
@@ -203,7 +187,6 @@ bool SkeletonBounds::intersectsSegment(Polygon *polygon, float x1, float y1, flo
 
 spine::Polygon *SkeletonBounds::getPolygon(BoundingBoxAttachment *attachment) {
 	int index = _boundingBoxes.indexOf(attachment);
-
 	return index == -1 ? NULL : _polygons[index];
 }
 
@@ -216,10 +199,10 @@ float SkeletonBounds::getHeight() {
 }
 
 void SkeletonBounds::aabbCompute() {
-	float minX = std::numeric_limits<float>::min();
-	float minY = std::numeric_limits<float>::min();
-	float maxX = std::numeric_limits<float>::max();
-	float maxY = std::numeric_limits<float>::max();
+	float minX = FLT_MIN;
+	float minY = FLT_MIN;
+	float maxX = FLT_MAX;
+	float maxY = FLT_MAX;
 
 	for (size_t i = 0, n = _polygons.size(); i < n; ++i) {
 		Polygon *polygon = _polygons[i];

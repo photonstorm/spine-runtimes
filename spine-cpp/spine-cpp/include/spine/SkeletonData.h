@@ -112,7 +112,6 @@ public:
 
 	/// The skeleton's default skin.
 	/// By default this skin contains all attachments that were not in a skin in Spine.
-	///
 	/// @return May be NULL.
 	Skin *getDefaultSkin();
 
@@ -127,6 +126,14 @@ public:
 	Vector<TransformConstraintData *> &getTransformConstraints();
 
 	Vector<PathConstraintData *> &getPathConstraints();
+
+	float getX();
+
+	void setX(float inValue);
+
+	float getY();
+
+	void setY(float inValue);
 
 	float getWidth();
 

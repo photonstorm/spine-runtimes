@@ -74,7 +74,7 @@ static void setVertex(FSlateVertex* vertex, float x, float y, float u, float v, 
 }
 
 int32 SSpineWidget::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyClippingRect, FSlateWindowElementList& OutDrawElements,
-							   int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const {
+	int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const {
 
 	SSpineWidget* self = (SSpineWidget*)this;
 	UMaterialInstanceDynamic* MatNow = nullptr;
@@ -230,7 +230,7 @@ void SSpineWidget::UpdateMesh(int32 LayerId, FSlateWindowElementList& OutDrawEle
 	unsigned short quadIndices[] = { 0, 1, 2, 0, 2, 3 };
 
 	for (int i = 0; i < (int)Skeleton->getSlots().size(); ++i) {
-		Vector<float> &attachmentVertices = worldVertices;
+		Vector<float> *attachmentVertices = &worldVertices;
 		unsigned short* attachmentIndices = nullptr;
 		int numVertices;
 		int numIndices;
@@ -240,17 +240,26 @@ void SSpineWidget::UpdateMesh(int32 LayerId, FSlateWindowElementList& OutDrawEle
 		float* attachmentUvs = nullptr;
 
 		Slot* slot = Skeleton->getDrawOrder()[i];
-		if (!slot->getBone().isActive()) continue;
+		if (!slot->getBone().isActive()) {
+			clipper.clipEnd(*slot);
+			continue;
+		}
 
 		Attachment* attachment = slot->getAttachment();
-		if (!attachment) continue;
-		if (!attachment->getRTTI().isExactly(RegionAttachment::rtti) && !attachment->getRTTI().isExactly(MeshAttachment::rtti) && !attachment->getRTTI().isExactly(ClippingAttachment::rtti)) continue;
+		if (!attachment) {
+			clipper.clipEnd(*slot);
+			continue;
+		}
+		if (!attachment->getRTTI().isExactly(RegionAttachment::rtti) && !attachment->getRTTI().isExactly(MeshAttachment::rtti) && !attachment->getRTTI().isExactly(ClippingAttachment::rtti)) {
+			clipper.clipEnd(*slot);
+			continue;
+		}
 
 		if (attachment->getRTTI().isExactly(RegionAttachment::rtti)) {
 			RegionAttachment* regionAttachment = (RegionAttachment*)attachment;
 			attachmentColor.set(regionAttachment->getColor());
 			attachmentAtlasRegion = (AtlasRegion*)regionAttachment->getRendererObject();
-			regionAttachment->computeWorldVertices(slot->getBone(), attachmentVertices, 0, 2);
+			regionAttachment->computeWorldVertices(slot->getBone(), *attachmentVertices, 0, 2);
 			attachmentIndices = quadIndices;
 			attachmentUvs = regionAttachment->getUVs().buffer();
 			numVertices = 4;
@@ -260,7 +269,7 @@ void SSpineWidget::UpdateMesh(int32 LayerId, FSlateWindowElementList& OutDrawEle
 			MeshAttachment* mesh = (MeshAttachment*)attachment;
 			attachmentColor.set(mesh->getColor());
 			attachmentAtlasRegion = (AtlasRegion*)mesh->getRendererObject();
-			mesh->computeWorldVertices(*slot, 0, mesh->getWorldVerticesLength(), attachmentVertices, 0, 2);
+			mesh->computeWorldVertices(*slot, 0, mesh->getWorldVerticesLength(), *attachmentVertices, 0, 2);
 			attachmentIndices = mesh->getTriangles().buffer();
 			attachmentUvs = mesh->getUVs().buffer();
 			numVertices = mesh->getWorldVerticesLength() >> 1;
@@ -278,34 +287,52 @@ void SSpineWidget::UpdateMesh(int32 LayerId, FSlateWindowElementList& OutDrawEle
 		UMaterialInstanceDynamic* material = nullptr;
 		switch (slot->getData().getBlendMode()) {
 		case BlendMode_Normal:
-			if (!widget->pageToNormalBlendMaterial.Contains(attachmentAtlasRegion->page)) continue;
+			if (!widget->pageToNormalBlendMaterial.Contains(attachmentAtlasRegion->page)) {
+				clipper.clipEnd(*slot);
+				continue;
+			}
 			material = widget->pageToNormalBlendMaterial[attachmentAtlasRegion->page];
 			break;
 		case BlendMode_Additive:
-			if (!widget->pageToAdditiveBlendMaterial.Contains(attachmentAtlasRegion->page)) continue;
+			if (!widget->pageToAdditiveBlendMaterial.Contains(attachmentAtlasRegion->page)) {
+				clipper.clipEnd(*slot);
+				continue;
+			}
 			material = widget->pageToAdditiveBlendMaterial[attachmentAtlasRegion->page];
 			break;
 		case BlendMode_Multiply:
-			if (!widget->pageToMultiplyBlendMaterial.Contains(attachmentAtlasRegion->page)) continue;
+			if (!widget->pageToMultiplyBlendMaterial.Contains(attachmentAtlasRegion->page)) {
+				clipper.clipEnd(*slot);
+				continue;
+			}
 			material = widget->pageToMultiplyBlendMaterial[attachmentAtlasRegion->page];
 			break;
 		case BlendMode_Screen:
-			if (!widget->pageToScreenBlendMaterial.Contains(attachmentAtlasRegion->page)) continue;
+			if (!widget->pageToScreenBlendMaterial.Contains(attachmentAtlasRegion->page)) {
+				clipper.clipEnd(*slot);
+				continue;
+			}
 			material = widget->pageToScreenBlendMaterial[attachmentAtlasRegion->page];
 			break;
 		default:
-			if (!widget->pageToNormalBlendMaterial.Contains(attachmentAtlasRegion->page)) continue;
+			if (!widget->pageToNormalBlendMaterial.Contains(attachmentAtlasRegion->page)) {
+				clipper.clipEnd(*slot);
+				continue;
+			}
 			material = widget->pageToNormalBlendMaterial[attachmentAtlasRegion->page];
 		}
 
 		if (clipper.isClipping()) {
-			clipper.clipTriangles(attachmentVertices.buffer(), attachmentIndices, numIndices, attachmentUvs, 2);
-			attachmentVertices = clipper.getClippedVertices();
+			clipper.clipTriangles(attachmentVertices->buffer(), attachmentIndices, numIndices, attachmentUvs, 2);
+			attachmentVertices = &clipper.getClippedVertices();
 			numVertices = clipper.getClippedVertices().size() >> 1;
 			attachmentIndices = clipper.getClippedTriangles().buffer();
 			numIndices = clipper.getClippedTriangles().size();
 			attachmentUvs = clipper.getClippedUVs().buffer();
-			if (clipper.getClippedTriangles().size() == 0) continue;
+			if (clipper.getClippedTriangles().size() == 0) {
+				clipper.clipEnd(*slot);
+				continue;
+			}
 		}
 
 		if (lastMaterial != material) {
@@ -323,10 +350,11 @@ void SSpineWidget::UpdateMesh(int32 LayerId, FSlateWindowElementList& OutDrawEle
 		float dg = slot->hasDarkColor() ? slot->getDarkColor().g : 0.0f;
 		float db = slot->hasDarkColor() ? slot->getDarkColor().b : 0.0f;
 
+		float* verticesPtr = attachmentVertices->buffer();
 		for (int j = 0; j < numVertices << 1; j += 2) {
 			colors.Add(FColor(r, g, b, a));
 			darkColors.Add(FVector(dr, dg, db));
-			vertices.Add(FVector(attachmentVertices[j], -attachmentVertices[j + 1], depthOffset));
+			vertices.Add(FVector(verticesPtr[j], -verticesPtr[j + 1], depthOffset));
 			uvs.Add(FVector2D(attachmentUvs[j], attachmentUvs[j + 1]));
 		}
 

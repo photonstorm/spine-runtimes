@@ -31,6 +31,10 @@
 #define NEW_PREFAB_SYSTEM
 #endif
 
+#if UNITY_2018_1_OR_NEWER
+#define PER_MATERIAL_PROPERTY_BLOCKS
+#endif
+
 #if UNITY_2017_1_OR_NEWER
 #define BUILT_IN_SPRITE_MASK_COMPONENT
 #endif
@@ -90,6 +94,15 @@ namespace Spine.Unity {
 		/// <remarks>This disables SkeletonRenderSeparator functionality.</remarks>
 		public bool singleSubmesh = false;
 
+		#if PER_MATERIAL_PROPERTY_BLOCKS
+		/// <summary> Applies only when 3+ submeshes are used (2+ materials with alternating order, e.g. "A B A").
+		/// If true, MaterialPropertyBlocks are assigned at each material to prevent aggressive batching of submeshes
+		/// by e.g. the LWRP renderer, leading to incorrect draw order (e.g. "A1 B A2" changed to "A1A2 B").
+		/// You can disable this parameter when everything is drawn correctly to save the additional performance cost.
+		/// </summary>
+		public bool fixDrawOrder = false;
+		#endif
+
 		/// <summary>If true, the mesh generator adds normals to the output mesh. For better performance and reduced memory requirements, use a shader that assumes the desired normal.</summary>
 		[UnityEngine.Serialization.FormerlySerializedAs("calculateNormals")] public bool addNormals = false;
 
@@ -101,7 +114,7 @@ namespace Spine.Unity {
 		/// <remarks>Interaction modes with <see cref="UnityEngine.SpriteMask"/> components are identical to Unity's <see cref="UnityEngine.SpriteRenderer"/>,
 		/// see https://docs.unity3d.com/ScriptReference/SpriteMaskInteraction.html. </remarks>
 		public SpriteMaskInteraction maskInteraction = SpriteMaskInteraction.None;
-		
+
 		[System.Serializable]
 		public class SpriteMaskInteractionMaterials {
 			/// <summary>Material references for switching material sets at runtime when <see cref="SkeletonRenderer.maskInteraction"/> changes to <see cref="SpriteMaskInteraction.None"/>.</summary>
@@ -113,7 +126,7 @@ namespace Spine.Unity {
 		}
 		/// <summary>Material references for switching material sets at runtime when <see cref="SkeletonRenderer.maskInteraction"/> changes.</summary>
 		public SpriteMaskInteractionMaterials maskMaterials = new SpriteMaskInteractionMaterials();
-		
+
 		/// <summary>Shader property ID used for the Stencil comparison function.</summary>
 		public static readonly int STENCIL_COMP_PARAM_ID = Shader.PropertyToID("_StencilComp");
 		/// <summary>Shader property value used as Stencil comparison function for <see cref="SpriteMaskInteraction.None"/>.</summary>
@@ -311,7 +324,7 @@ namespace Spine.Unity {
 			if (!Application.isPlaying) {
 				string errorMessage = null;
 				if (MaterialChecks.IsMaterialSetupProblematic(this, ref errorMessage))
-					Debug.LogWarningFormat("Problematic material setup at {0}: {1}", this.name, errorMessage);
+					Debug.LogWarningFormat(this, "Problematic material setup at {0}: {1}", this.name, errorMessage);
 			}
 			#endif
 		}
@@ -340,11 +353,11 @@ namespace Spine.Unity {
 
 				// STEP 1.9. Post-process workingInstructions. ==================================================================================
 				#if SPINE_OPTIONAL_MATERIALOVERRIDE
-				if (customMaterialOverride.Count > 0) // isCustomMaterialOverridePopulated 
+				if (customMaterialOverride.Count > 0) // isCustomMaterialOverridePopulated
 					MeshGenerator.TryReplaceMaterials(workingSubmeshInstructions, customMaterialOverride);
 				#endif
 
-				// STEP 2. Update vertex buffer based on verts from the attachments.  ===========================================================
+				// STEP 2. Update vertex buffer based on verts from the attachments. ===========================================================
 				meshGenerator.settings = new MeshGenerator.Settings {
 					pmaVertexColors = this.pmaVertexColors,
 					zSpacing = this.zSpacing,
@@ -367,7 +380,7 @@ namespace Spine.Unity {
 
 				// STEP 1.9. Post-process workingInstructions. ==================================================================================
 				#if SPINE_OPTIONAL_MATERIALOVERRIDE
-				if (customMaterialOverride.Count > 0) // isCustomMaterialOverridePopulated 
+				if (customMaterialOverride.Count > 0) // isCustomMaterialOverridePopulated
 					MeshGenerator.TryReplaceMaterials(workingSubmeshInstructions, customMaterialOverride);
 				#endif
 
@@ -380,7 +393,7 @@ namespace Spine.Unity {
 
 				updateTriangles = SkeletonRendererInstruction.GeometryNotEqual(currentInstructions, currentSmartMesh.instructionUsed);
 
-				// STEP 2. Update vertex buffer based on verts from the attachments.  ===========================================================
+				// STEP 2. Update vertex buffer based on verts from the attachments. ===========================================================
 				meshGenerator.settings = new MeshGenerator.Settings {
 					pmaVertexColors = this.pmaVertexColors,
 					zSpacing = this.zSpacing,
@@ -420,6 +433,12 @@ namespace Spine.Unity {
 			#if BUILT_IN_SPRITE_MASK_COMPONENT
 			if (meshRenderer != null) {
 				AssignSpriteMaskMaterials();
+			}
+			#endif
+
+			#if PER_MATERIAL_PROPERTY_BLOCKS
+			if (fixDrawOrder && meshRenderer.sharedMaterials.Length > 2) {
+				SetDrawOrderMaterialPropertyBlocks();
 			}
 			#endif
 		}
@@ -508,7 +527,7 @@ namespace Spine.Unity {
 				if (maskMaterials.materialsOutsideMask.Length == 0 || maskMaterials.materialsOutsideMask[0] == null) {
 					if (!InitSpriteMaskMaterialsOutsideMask())
 						return;
-				}	
+				}
 				this.meshRenderer.materials = maskMaterials.materialsOutsideMask;
 			}
 		}
@@ -580,5 +599,33 @@ namespace Spine.Unity {
 		#endif // UNITY_EDITOR
 
 		#endif //#if BUILT_IN_SPRITE_MASK_COMPONENT
+
+		#if PER_MATERIAL_PROPERTY_BLOCKS
+		private MaterialPropertyBlock reusedPropertyBlock;
+		public static readonly int SUBMESH_DUMMY_PARAM_ID = Shader.PropertyToID("_Submesh");
+
+		/// <summary>
+		/// This method was introduced as a workaround for too aggressive submesh draw call batching,
+		/// leading to incorrect draw order when 3+ materials are used at submeshes in alternating order.
+		/// Otherwise, e.g. when using Lightweight Render Pipeline, deliberately separated draw calls
+		/// "A1 B A2" are reordered to "A1A2 B", regardless of batching-related project settings.
+		/// </summary>
+		private void SetDrawOrderMaterialPropertyBlocks() {
+			if (reusedPropertyBlock == null) reusedPropertyBlock = new MaterialPropertyBlock();
+			
+			bool hasPerRendererBlock = meshRenderer.HasPropertyBlock();
+			if (hasPerRendererBlock) {
+				meshRenderer.GetPropertyBlock(reusedPropertyBlock);
+			}
+
+			for (int i = 0; i < meshRenderer.sharedMaterials.Length; ++i) {
+				if (!hasPerRendererBlock) meshRenderer.GetPropertyBlock(reusedPropertyBlock, i);
+				// Note: this parameter shall not exist at any shader, then Unity will create separate
+				// material instances (not in terms of memory cost or leakage).
+				reusedPropertyBlock.SetFloat(SUBMESH_DUMMY_PARAM_ID, i);
+				meshRenderer.SetPropertyBlock(reusedPropertyBlock, i);
+			}
+		}
+		#endif
 	}
 }

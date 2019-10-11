@@ -29,7 +29,7 @@
 
 // With contributions from: Mitch Thompson
 
-#if UNITY_2018_3 || UNITY_2019
+#if UNITY_2018_3 || UNITY_2019 || UNITY_2018_3_OR_NEWER
 #define NEW_PREFAB_SYSTEM
 #else
 #define NO_PREFAB_MESH
@@ -84,7 +84,7 @@ namespace Spine.Unity.Editor {
 		[SpineBone(dataField:"skeletonRenderer")]
 		public string boneName;
 
-		readonly Dictionary<Slot, List<Attachment>> attachmentTable = new Dictionary<Slot, List<Attachment>>();
+		readonly Dictionary<Slot, List<Skin.SkinEntry>> attachmentTable = new Dictionary<Slot, List<Skin.SkinEntry>>();
 
 		static bool staticLostValues = true;
 
@@ -101,7 +101,7 @@ namespace Spine.Unity.Editor {
 			if (bone != null) {
 				SpineHandles.DrawBone(skeletonRenderer.transform, bone, 1.5f, Color.cyan);
 				Handles.Label(bone.GetWorldPosition(skeletonRenderer.transform) + (Vector3.down * 0.15f), bone.Data.Name, SpineHandles.BoneNameStyle);
-			}			
+			}
 		}
 
 		void OnSelectionChange () {
@@ -123,7 +123,7 @@ namespace Spine.Unity.Editor {
 				if (selectedSkeletonRenderer == null) {
 					noSkeletonRenderer = true;
 				} else if (skeletonRenderer != selectedSkeletonRenderer) {
-					
+
 					bone = null;
 					if (skeletonRenderer != null && skeletonRenderer.SkeletonDataAsset != selectedSkeletonRenderer.SkeletonDataAsset)
 						boneName = null;
@@ -139,7 +139,7 @@ namespace Spine.Unity.Editor {
 #endif
 					UpdateAttachments();
 				}
-			} 
+			}
 
 			if (noSkeletonRenderer) Clear();
 			Repaint();
@@ -194,7 +194,7 @@ namespace Spine.Unity.Editor {
 
 			EditorGUILayout.Space();
 			EditorGUI.BeginDisabledGroup(true);
-			EditorGUILayout.ObjectField(SpineInspectorUtility.TempContent("Debug Selection", Icons.spine), skeletonRenderer,  typeof(SkeletonRenderer), true);
+			EditorGUILayout.ObjectField(SpineInspectorUtility.TempContent("Debug Selection", Icons.spine), skeletonRenderer, typeof(SkeletonRenderer), true);
 			EditorGUI.EndDisabledGroup();
 
 			if (skeleton == null || skeletonRenderer == null) {
@@ -209,7 +209,7 @@ namespace Spine.Unity.Editor {
 
 			if (!skeletonRenderer.valid) {
 				EditorGUILayout.HelpBox("Spine Component is invalid. Check SkeletonData Asset.", MessageType.Error);
-				return;	
+				return;
 			}
 
 			if (activeSkin != skeleton.Skin)
@@ -338,7 +338,7 @@ namespace Spine.Unity.Editor {
 						}
 
 						int baseIndent = EditorGUI.indentLevel;
-						foreach (KeyValuePair<Slot, List<Attachment>> pair in attachmentTable) {
+						foreach (KeyValuePair<Slot, List<Skin.SkinEntry>> pair in attachmentTable) {
 							Slot slot = pair.Key;
 
 							using (new EditorGUILayout.HorizontalScope()) {
@@ -352,7 +352,8 @@ namespace Spine.Unity.Editor {
 								}
 							}
 
-							foreach (var attachment in pair.Value) {
+							foreach (var skinEntry in pair.Value) {
+								var attachment = skinEntry.Attachment;
 								GUI.contentColor = slot.Attachment == attachment ? Color.white : Color.grey;
 								EditorGUI.indentLevel = baseIndent + 2;
 								var icon = Icons.GetAttachmentIcon(attachment);
@@ -470,7 +471,7 @@ namespace Spine.Unity.Editor {
 
 				showDrawOrderTree.target = EditorGUILayout.Foldout(showDrawOrderTree.target, SpineInspectorUtility.TempContent("Draw Order and Separators", Icons.slotRoot), BoldFoldoutStyle);
 
-				//var separatorSlotNamesField = 
+				//var separatorSlotNamesField =
 				//SpineInspectorUtility.ge
 				if (showDrawOrderTree.faded > 0) {
 					using (new SpineInspectorUtility.IndentScope()) {
@@ -500,7 +501,7 @@ namespace Spine.Unity.Editor {
 									}
 								}
 							}
-								
+
 						}
 					}
 				}
@@ -577,21 +578,12 @@ namespace Spine.Unity.Editor {
 
 			attachmentTable.Clear();
 			for (int i = skeleton.Slots.Count - 1; i >= 0; i--) {
-				var attachments = new List<Attachment>();
+				var attachments = new List<Skin.SkinEntry>();
 				attachmentTable.Add(skeleton.Slots.Items[i], attachments);
 				// Add skin attachments.
-				var skinEntries = new List<Skin.SkinEntry>();
-				skin.GetAttachments(i, skinEntries);
-				foreach (var entry in skinEntries) {
-					attachments.Add(entry.Attachment);
-				}
-				if (notDefaultSkin) { // Add default skin attachments.
-					skinEntries.Clear();
-					defaultSkin.GetAttachments(i, skinEntries);
-					foreach (var entry in skinEntries) {
-						attachments.Add(entry.Attachment);
-					}
-				}
+				skin.GetAttachments(i, attachments);
+				if (notDefaultSkin && defaultSkin != null) // Add default skin attachments.
+					defaultSkin.GetAttachments(i, attachments);
 			}
 
 			activeSkin = skeleton.Skin;

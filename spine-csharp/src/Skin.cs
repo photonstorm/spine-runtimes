@@ -30,24 +30,24 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Collections.Specialized;
+using Spine.Collections;
 
 namespace Spine {
 	/// <summary>Stores attachments by slot index and attachment name.
-	/// <para>See SkeletonData <see cref="Spine.SkeletonData.DefaultSkin"/>, Skeleton <see cref="Spine.Skeleton.Skin"/>, and 
+	/// <para>See SkeletonData <see cref="Spine.SkeletonData.DefaultSkin"/>, Skeleton <see cref="Spine.Skeleton.Skin"/>, and
 	/// <a href="http://esotericsoftware.com/spine-runtime-skins">Runtime skins</a> in the Spine Runtimes Guide.</para>
 	/// </summary>
 	public class Skin {
 		internal string name;
-		private OrderedDictionary attachments = new OrderedDictionary(SkinEntryComparer.Instance); // contains <SkinEntry, Attachment>
+		private OrderedDictionary<SkinEntry, Attachment> attachments = new OrderedDictionary<SkinEntry, Attachment>(SkinEntryComparer.Instance);
 		internal readonly ExposedList<BoneData> bones = new ExposedList<BoneData>();
 		internal readonly ExposedList<ConstraintData> constraints = new ExposedList<ConstraintData>();
 
 		public string Name { get { return name; } }
-		public OrderedDictionary Attachments { get { return attachments; } }
+		public OrderedDictionary<SkinEntry, Attachment> Attachments { get { return attachments; } }
 		public ExposedList<BoneData> Bones { get { return bones; } }
 		public ExposedList<ConstraintData> Constraints { get { return constraints; } }
-		
+
 		public Skin (string name) {
 			if (name == null) throw new ArgumentNullException("name", "name cannot be null.");
 			this.name = name;
@@ -94,8 +94,9 @@ namespace Spine {
 		/// <returns>May be null.</returns>
 		public Attachment GetAttachment (int slotIndex, string name) {
 			var lookup = new SkinEntry(slotIndex, name, null);
-			var obj = attachments[lookup];
-			return (obj == null) ? null : (Attachment)obj;
+			Attachment attachment = null;
+			bool containsKey = attachments.TryGetValue(lookup, out attachment);
+			return containsKey ? attachment : null;
 		}
 
 		/// <summary> Removes the attachment in the skin for the specified slot index and name, if any.</summary>
@@ -106,11 +107,8 @@ namespace Spine {
 		}
 
 		///<summary>Returns all attachments contained in this skin.</summary>
-		public List<SkinEntry> GetAttachments () {
-			List<SkinEntry> entries = new List<SkinEntry>();
-			foreach (SkinEntry entry in this.attachments.Keys)
-				entries.Add(entry);
-			return entries;
+		public ICollection<SkinEntry> GetAttachments () {
+			return this.attachments.Keys;
 		}
 
 		/// <summary>Returns all attachments in this skin for the specified slot index.</summary>
@@ -176,21 +174,18 @@ namespace Spine {
 				}
 			}
 		}
-	
+
 		// Avoids boxing in the dictionary and is necessary to omit entry.attachment in the comparison.
-		class SkinEntryComparer : IEqualityComparer {
+		class SkinEntryComparer : IEqualityComparer<SkinEntry> {
 			internal static readonly SkinEntryComparer Instance = new SkinEntryComparer();
 
-			bool IEqualityComparer.Equals (object o1, object o2) {
-				var e1 = (SkinEntry)o1;
-				var e2 = (SkinEntry)o2;
+			bool IEqualityComparer<SkinEntry>.Equals (SkinEntry e1, SkinEntry e2) {
 				if (e1.SlotIndex != e2.SlotIndex) return false;
 				if (!string.Equals(e1.Name, e2.Name, StringComparison.Ordinal)) return false;
 				return true;
 			}
 
-			int IEqualityComparer.GetHashCode (object o) {
-				var e = (SkinEntry)o;
+			int IEqualityComparer<SkinEntry>.GetHashCode (SkinEntry e) {
 				return e.Name.GetHashCode() + e.SlotIndex * 37;
 			}
 		}

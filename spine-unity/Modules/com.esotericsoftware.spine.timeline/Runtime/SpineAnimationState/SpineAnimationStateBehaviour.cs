@@ -44,8 +44,11 @@ namespace Spine.Unity.Playables {
 		public AnimationReferenceAsset animationReference;
 		public bool loop;
 
-		[Header("Mix Properties")]
+		// Mix Properties
 		public bool customDuration = false;
+		public bool useBlendDuration = true;
+		[SerializeField]
+		private bool isInitialized = false; // required to read preferences values from editor side.
 		public float mixDuration = 0.1f;
 
 		[Range(0, 1f)]

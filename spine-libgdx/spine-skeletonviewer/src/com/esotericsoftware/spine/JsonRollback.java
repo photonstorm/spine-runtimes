@@ -135,13 +135,18 @@ public class JsonRollback {
 
 		if (map.isObject() && map.parent.isArray()) { // Probably a key.
 			if (!map.has("time")) map.addChild("time", new JsonValue(0f));
-			if (map.parent.name != null && map.parent.name.equals("rotate") && !map.has("angle"))
-				map.addChild("angle", new JsonValue(0f));
+			if (map.parent.name != null) {
+				if (map.parent.name.equals("rotate") && !map.has("angle"))
+					map.addChild("angle", new JsonValue(0f));
+				else if (map.parent.name.equals("scale")) {
+					if (!map.has("x")) map.addChild("x", new JsonValue(1f));
+					if (!map.has("y")) map.addChild("y", new JsonValue(1f));
+				}
+			}
 		}
 
 		JsonValue curve = map.get("curve");
 		if (curve == null) {
-			if (map.name != null && map.name.equals("color")) System.out.println();
 			for (JsonValue child = map.child; child != null; child = child.next)
 				rollbackCurves(child);
 			return;
@@ -150,8 +155,8 @@ public class JsonRollback {
 			curve.addChild(new JsonValue(curve.asFloat()));
 			curve.setType(ValueType.array);
 			curve.addChild(new JsonValue(map.getFloat("c2", 0)));
-			curve.addChild(new JsonValue(map.getFloat("c3", 0)));
-			curve.addChild(new JsonValue(map.getFloat("c4", 0)));
+			curve.addChild(new JsonValue(map.getFloat("c3", 1)));
+			curve.addChild(new JsonValue(map.getFloat("c4", 1)));
 			map.remove("c2");
 			map.remove("c3");
 			map.remove("c4");

@@ -34,7 +34,7 @@
 #include <spine/Vector.h>
 #include <spine/SpineObject.h>
 
- // Required for new with line number and file name in  MSVC
+ // Required for new with line number and file name in MSVC
 #ifdef _MSC_VER
 #pragma warning(disable:4291)
 #endif
@@ -89,11 +89,17 @@ public:
 	}
 
 	~HashMap() {
+		clear();
+	}
+
+	void clear() {
 		for (Entry *entry = _head; entry != NULL;) {
 			Entry* next = entry->next;
 			delete entry;
 			entry = next;
 		}
+		_head = NULL;
+		_size = 0;
 	}
 
 	size_t size() {

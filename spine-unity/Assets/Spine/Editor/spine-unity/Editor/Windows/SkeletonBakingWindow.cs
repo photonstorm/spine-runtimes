@@ -27,10 +27,6 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *****************************************************************************/
 
-#if UNITY_2018_3 || UNITY_2019
-#define NEW_PREFAB_SYSTEM
-#endif
-
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -44,7 +40,6 @@ namespace Spine.Unity.Editor {
 	public class SkeletonBakingWindow : EditorWindow {
 		const bool IsUtilityWindow = true;
 
-		#if !NEW_PREFAB_SYSTEM
 		[MenuItem("CONTEXT/SkeletonDataAsset/Skeleton Baking", false, 5000)]
 		public static void Init (MenuCommand command) {
 			var window = EditorWindow.GetWindow<SkeletonBakingWindow>(IsUtilityWindow);
@@ -54,7 +49,6 @@ namespace Spine.Unity.Editor {
 			window.skeletonDataAsset = command.context as SkeletonDataAsset;
 			window.Show();
 		}
-		#endif
 
 		public SkeletonDataAsset skeletonDataAsset;
 		[SpineSkin(dataField:"skeletonDataAsset")]
@@ -75,7 +69,7 @@ namespace Spine.Unity.Editor {
 
 		void OnGUI () {
 			so = so ?? new SerializedObject(this);
-		
+
 			EditorGUIUtility.wideMode = true;
 			EditorGUILayout.LabelField("Spine Skeleton Prefab Baking", EditorStyles.boldLabel);
 
@@ -87,7 +81,7 @@ namespace Spine.Unity.Editor {
 				"\n\tLocal Shear" +
 				"\n\tAll Constraint types" +
 				"\n\tWeighted mesh verts with more than 4 bound bones" +
-			
+
 				"\n\nBaked Animations do not support the following:" +
 				"\n\tMesh Deform Keys" +
 				"\n\tColor Keys" +
@@ -147,10 +141,10 @@ namespace Spine.Unity.Editor {
 				}
 			}
 			EditorGUILayout.Space();
-			
+
 			if (!string.IsNullOrEmpty(skinToBake) && UnityEngine.Event.current.type == EventType.Repaint)
 				bakeSkin = skeletonData.FindSkin(skinToBake) ?? skeletonData.DefaultSkin;
-			
+
 			var prefabIcon = EditorGUIUtility.FindTexture("PrefabModel Icon");
 
 			if (hasExtraSkins) {
@@ -172,8 +166,8 @@ namespace Spine.Unity.Editor {
 				if (SpineInspectorUtility.LargeCenteredButton(SpineInspectorUtility.TempContent("Bake Skeleton", prefabIcon))) {
 					SkeletonBaker.BakeToPrefab(skeletonDataAsset, new ExposedList<Skin>(new[] { bakeSkin }), "", bakeAnimations, bakeIK, bakeEventOptions);
 				}
-				
-			}			
+
+			}
 
 		}
 	}

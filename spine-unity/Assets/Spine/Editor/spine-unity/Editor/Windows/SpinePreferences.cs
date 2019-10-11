@@ -51,7 +51,7 @@ namespace Spine.Unity.Editor {
 		public const string SPINE_SETTINGS_ASSET_PATH = "Assets/Editor/SpineSettings.asset";
 
 		#if SPINE_TK2D
-		const float DEFAULT_DEFAULT_SCALE = 1f;
+		internal const float DEFAULT_DEFAULT_SCALE = 1f;
 		#else
 		internal const float DEFAULT_DEFAULT_SCALE = 0.01f;
 		#endif
@@ -89,7 +89,14 @@ namespace Spine.Unity.Editor {
 		internal const float DEFAULT_SCENE_ICONS_SCALE = 1f;
 		public const string SCENE_ICONS_SCALE_KEY = "SPINE_SCENE_ICONS_SCALE";
 
-	#if NEW_PREFERENCES_SETTINGS_PROVIDER
+		public const bool DEFAULT_MECANIM_EVENT_INCLUDE_FOLDERNAME = true;
+		public bool mecanimEventIncludeFolderName = DEFAULT_MECANIM_EVENT_INCLUDE_FOLDERNAME;
+
+		// Timeline extension module
+		public const bool DEFAULT_TIMELINE_USE_BLEND_DURATION = true;
+		public bool timelineUseBlendDuration = DEFAULT_TIMELINE_USE_BLEND_DURATION;
+
+#if NEW_PREFERENCES_SETTINGS_PROVIDER
 		public static void Load () {
 			SpineHandles.handleScale = EditorPrefs.GetFloat(SCENE_ICONS_SCALE_KEY, DEFAULT_SCENE_ICONS_SCALE);
 			GetOrCreateSettings();
@@ -113,19 +120,19 @@ namespace Spine.Unity.Editor {
 		}
 
 		public static void HandlePreferencesGUI (SerializedObject settings) {
-			
+
 			float prevLabelWidth = EditorGUIUtility.labelWidth;
 			EditorGUIUtility.labelWidth = 250;
-			
+
 			using (new EditorGUI.IndentLevelScope()) {
 				EditorGUI.BeginChangeCheck();
 				EditorGUILayout.PropertyField(settings.FindProperty("showHierarchyIcons"), new GUIContent("Show Hierarchy Icons", "Show relevant icons on GameObjects with Spine Components on them. Disable this if you have large, complex scenes."));
 				if (EditorGUI.EndChangeCheck()) {
-					#if NEWPLAYMODECALLBACKS
+#if NEWPLAYMODECALLBACKS
 					SpineEditorUtilities.HierarchyHandler.IconsOnPlaymodeStateChanged(PlayModeStateChange.EnteredEditMode);
-					#else
+#else
 					SpineEditorUtilities.HierarchyHandler.IconsOnPlaymodeStateChanged();
-					#endif
+#endif
 				}
 
 				EditorGUILayout.PropertyField(settings.FindProperty("autoReloadSceneSkeletons"), new GUIContent("Auto-reload scene components", "Reloads Skeleton components in the scene whenever their SkeletonDataAsset is modified. This makes it so changes in the SkeletonDataAsset inspector are immediately reflected. This may be slow when your scenes have large numbers of SkeletonRenderers or SkeletonGraphic."));
@@ -135,7 +142,7 @@ namespace Spine.Unity.Editor {
 				{
 					SpineEditorUtilities.FloatPropertyField(settings.FindProperty("defaultMix"), new GUIContent("Default Mix", "The Default Mix Duration for newly imported SkeletonDataAssets."), min: 0f);
 					SpineEditorUtilities.FloatPropertyField(settings.FindProperty("defaultScale"), new GUIContent("Default SkeletonData Scale", "The Default skeleton import scale for newly imported SkeletonDataAssets."), min: 0.0000001f);
-					
+
 					SpineEditorUtilities.ShaderPropertyField(settings.FindProperty("defaultShader"), new GUIContent("Default Shader"), SpinePreferences.DEFAULT_DEFAULT_SHADER);
 
 					EditorGUILayout.PropertyField(settings.FindProperty("setTextureImporterSettings"), new GUIContent("Apply Atlas Texture Settings", "Apply the recommended settings for Texture Importers."));
@@ -153,6 +160,12 @@ namespace Spine.Unity.Editor {
 				{
 					EditorGUILayout.Slider(settings.FindProperty("defaultZSpacing"), -0.1f, 0f, new GUIContent("Default Slot Z-Spacing"));
 					EditorGUILayout.PropertyField(settings.FindProperty("defaultInstantiateLoop"), new GUIContent("Default Loop", "Spawn Spine GameObjects with loop enabled."));
+				}
+
+				EditorGUILayout.Space();
+				EditorGUILayout.LabelField("Mecanim Bake Settings", EditorStyles.boldLabel);
+				{
+					EditorGUILayout.PropertyField(settings.FindProperty("mecanimEventIncludeFolderName"), new GUIContent("Include Folder Name in Event", "When enabled, Mecanim events will call methods named 'FolderNameEventName', when disabled it will call 'EventName'."));
 				}
 
 				EditorGUILayout.Space();
@@ -176,9 +189,15 @@ namespace Spine.Unity.Editor {
 					if (GUILayout.Button("Disable", GUILayout.Width(64)))
 						SpineEditorUtilities.SpineTK2DEditorUtility.DisableTK2D();
 				}
+
+				GUILayout.Space(20);
+				EditorGUILayout.LabelField("Timeline Extension", EditorStyles.boldLabel);
+				{
+					EditorGUILayout.PropertyField(settings.FindProperty("timelineUseBlendDuration"), new GUIContent("Use Blend Duration", "When enabled, MixDuration will be synced with timeline clip transition duration 'Ease In Duration'."));
+				}
 			}
 			EditorGUIUtility.labelWidth = prevLabelWidth;
 		}
-	#endif // NEW_PREFERENCES_SETTINGS_PROVIDER
+#endif // NEW_PREFERENCES_SETTINGS_PROVIDER
 	}
 }

@@ -35,18 +35,6 @@
 #define NEWPLAYMODECALLBACKS
 #endif
 
-#if UNITY_2018_3 || UNITY_2019 || UNITY_2018_3_OR_NEWER
-#define NEW_PREFAB_SYSTEM
-#endif
-
-#if UNITY_2018 || UNITY_2019 || UNITY_2018_3_OR_NEWER
-#define NEWHIERARCHYWINDOWCALLBACKS
-#endif
-
-#if UNITY_2018_3_OR_NEWER
-#define NEW_PREFERENCES_SETTINGS_PROVIDER
-#endif
-
 using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
@@ -86,7 +74,7 @@ namespace Spine.Unity.Editor {
 					if (skeletonDataAsset != null) skeletonDataAssetsToReload.Add(skeletonDataAsset);
 				}
 
-				// Under some circumstances (e.g. on first import) SkeletonGraphic objects 
+				// Under some circumstances (e.g. on first import) SkeletonGraphic objects
 				// have their skeletonGraphic.skeletonDataAsset reference corrupted
 				// by the instance of the ScriptableObject being destroyed but still assigned.
 				// Here we save the skeletonGraphic.skeletonDataAsset asset path in order

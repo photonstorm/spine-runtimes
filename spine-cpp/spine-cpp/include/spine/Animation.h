@@ -31,6 +31,7 @@
 #define Spine_Animation_h
 
 #include <spine/Vector.h>
+#include <spine/HashMap.h>
 #include <spine/MixBlend.h>
 #include <spine/MixDirection.h>
 #include <spine/SpineObject.h>
@@ -88,11 +89,13 @@ public:
 	/// Applies all the animation's timelines to the specified skeleton.
 	/// See also Timeline::apply(Skeleton&, float, float, Vector, float, MixPose, MixDirection)
 	void apply(Skeleton &skeleton, float lastTime, float time, bool loop, Vector<Event *> *pEvents, float alpha,
-			   MixBlend blend, MixDirection direction);
+		MixBlend blend, MixDirection direction);
 
 	const String &getName();
 
 	Vector<Timeline *> &getTimelines();
+
+	bool hasTimeline(int id);
 
 	float getDuration();
 
@@ -102,6 +105,7 @@ public:
 
 private:
 	Vector<Timeline *> _timelines;
+	HashMap<int, bool> _timelineIds;
 	float _duration;
 	String _name;
 

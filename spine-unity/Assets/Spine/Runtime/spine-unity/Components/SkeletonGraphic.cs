@@ -59,11 +59,13 @@ namespace Spine.Unity {
 		public bool freeze;
 		public bool unscaledTime;
 
+		private Texture baseTexture = null;
+
 		#if UNITY_EDITOR
 		protected override void OnValidate () {
 			// This handles Scene View preview.
 			base.OnValidate ();
-			if (this.IsValid) { 
+			if (this.IsValid) {
 				if (skeletonDataAsset == null) {
 					Clear();
 				} else if (skeletonDataAsset.skeletonJSON == null) {
@@ -84,14 +86,14 @@ namespace Spine.Unity {
 							else
 								skeleton.SetSkin(skin);
 						}
-							
+
 					}
 
 					// Only provide visual feedback to inspector changes in Unity Editor Edit mode.
 					if (!Application.isPlaying) {
 						skeleton.ScaleX = this.initialFlipX ? -1 : 1;
 						skeleton.ScaleY = this.initialFlipY ? -1 : 1;
-						
+
 						state.ClearTrack(0);
 						skeleton.SetToSetupPose();
 						if (!string.IsNullOrEmpty(startingAnimation)) {
@@ -113,7 +115,7 @@ namespace Spine.Unity {
 
 			base.Reset();
 			if (material == null || material.shader != Shader.Find("Spine/SkeletonGraphic"))
-				Debug.LogWarning("SkeletonGraphic works best with the SkeletonGraphic material.");			
+				Debug.LogWarning("SkeletonGraphic works best with the SkeletonGraphic material.");
 		}
 		#endif
 		#endregion
@@ -151,10 +153,9 @@ namespace Spine.Unity {
 			}
 		}
 		public override Texture mainTexture {
-			get { 
-				// Fail loudly when incorrectly set up.
+			get {
 				if (overrideTexture != null) return overrideTexture;
-				return skeletonDataAsset == null ? null : skeletonDataAsset.atlasAssets[0].PrimaryMaterial.mainTexture;
+				return baseTexture;
 			}
 		}
 
@@ -205,7 +206,7 @@ namespace Spine.Unity {
 
 			skeleton.UpdateWorldTransform();
 
-			if (UpdateWorld != null) { 
+			if (UpdateWorld != null) {
 				UpdateWorld(this);
 				skeleton.UpdateWorldTransform();
 			}
@@ -272,6 +273,7 @@ namespace Spine.Unity {
 			};
 
 			meshBuffers = new DoubleBuffered<MeshRendererBuffers.SmartMesh>();
+			baseTexture = skeletonDataAsset.atlasAssets[0].PrimaryMaterial.mainTexture;
 			canvasRenderer.SetTexture(this.mainTexture); // Needed for overwriting initializations.
 
 			// Set the initial Skin and Animation
@@ -286,6 +288,8 @@ namespace Spine.Unity {
 					if (!Application.isPlaying)
 						Update(0f);
 					#endif
+					if (freeze)
+						Update(0f);
 				}
 			}
 		}
@@ -296,8 +300,7 @@ namespace Spine.Unity {
 			skeleton.SetColor(this.color);
 			var smartMesh = meshBuffers.GetNext();
 			var currentInstructions = this.currentInstructions;
-
-			MeshGenerator.GenerateSingleSubmeshInstruction(currentInstructions, skeleton, this.material);
+			MeshGenerator.GenerateSingleSubmeshInstruction(currentInstructions, skeleton, null);
 			bool updateTriangles = SkeletonRendererInstruction.GeometryNotEqual(currentInstructions, smartMesh.instructionUsed);
 
 			meshGenerator.Begin();
@@ -312,14 +315,23 @@ namespace Spine.Unity {
 
 			var mesh = smartMesh.mesh;
 			meshGenerator.FillVertexData(mesh);
-			if (updateTriangles) meshGenerator.FillTrianglesSingle(mesh);
+			if (updateTriangles) meshGenerator.FillTriangles(mesh);
 			meshGenerator.FillLateVertexData(mesh);
 
 			canvasRenderer.SetMesh(mesh);
 			smartMesh.instructionUsed.Set(currentInstructions);
 
+			if (currentInstructions.submeshInstructions.Count > 0) {
+				var material = currentInstructions.submeshInstructions.Items[0].material;
+				if (material != null && baseTexture != material.mainTexture) {
+					baseTexture = material.mainTexture;
+					if (overrideTexture == null)
+						canvasRenderer.SetTexture(this.mainTexture);
+				}
+			}
+
 			//this.UpdateMaterial(); // TODO: This allocates memory.
 		}
 		#endregion
-	} 
+	}
 }

@@ -40,7 +40,7 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
-using Spine;
+using CompatibilityProblemInfo = Spine.Unity.SkeletonDataCompatibility.CompatibilityProblemInfo;
 
 namespace Spine.Unity.Editor {
 	using Event = UnityEngine.Event;
@@ -69,6 +69,7 @@ namespace Spine.Unity.Editor {
 		SkeletonData targetSkeletonData;
 
 		readonly List<string> warnings = new List<string>();
+		CompatibilityProblemInfo compatibilityProblemInfo = null;
 		readonly SkeletonInspectorPreview preview = new SkeletonInspectorPreview();
 
 		GUIStyle activePlayButtonStyle, idlePlayButtonStyle;
@@ -77,7 +78,7 @@ namespace Spine.Unity.Editor {
 		string TargetAssetGUID { get { return AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(targetSkeletonDataAsset)); } }
 		string LastSkinKey { get { return TargetAssetGUID + "_lastSkin"; } }
 		string LastSkinName { get { return EditorPrefs.GetString(LastSkinKey, ""); } }
-		
+
 		void OnEnable () {
 			InitializeEditor();
 		}
@@ -137,15 +138,15 @@ namespace Spine.Unity.Editor {
 			PopulateWarnings();
 			if (targetSkeletonDataAsset.skeletonJSON == null) {
 				targetSkeletonData = null;
-				return;	
+				return;
 			}
 
-			targetSkeletonData = warnings.Count == 0 ? targetSkeletonDataAsset.GetSkeletonData(false) : null;
+			targetSkeletonData = NoProblems() ? targetSkeletonDataAsset.GetSkeletonData(false) : null;
 
-			if (targetSkeletonData != null && warnings.Count <= 0) {
+			if (targetSkeletonData != null && NoProblems()) {
 				preview.Initialize(this.Repaint, targetSkeletonDataAsset, this.LastSkinName);
 			}
-				
+
 		}
 
 		void Clear () {
@@ -174,11 +175,14 @@ namespace Spine.Unity.Editor {
 			// Header
 			EditorGUILayout.LabelField(SpineInspectorUtility.TempContent(target.name + " (SkeletonDataAsset)", Icons.spine), EditorStyles.whiteLargeLabel);
 			if (targetSkeletonData != null) EditorGUILayout.LabelField("(Drag and Drop to instantiate.)", EditorStyles.miniLabel);
-
+			
 			// Main Serialized Fields
 			using (var changeCheck = new EditorGUI.ChangeCheckScope()) {
 				using (new SpineInspectorUtility.BoxScope())
 					DrawSkeletonDataFields();
+
+				if (compatibilityProblemInfo != null)
+					return;
 
 				using (new SpineInspectorUtility.BoxScope()) {
 					DrawAtlasAssetsFields();
@@ -197,11 +201,11 @@ namespace Spine.Unity.Editor {
 					}
 				}
 			}
-
+			
 			// Unity Quirk: Some code depends on valid preview. If preview is initialized elsewhere, this can cause contents to change between Layout and Repaint events, causing GUILayout control count errors.
-			if (warnings.Count <= 0)
+			if (NoProblems())
 				preview.Initialize(this.Repaint, targetSkeletonDataAsset, this.LastSkinName);
-
+			
 			if (targetSkeletonData != null) {
 				GUILayout.Space(20f);
 
@@ -215,7 +219,7 @@ namespace Spine.Unity.Editor {
 				DrawAnimationList();
 				if (targetSkeletonData.Animations.Count > 0) {
 					const string AnimationReferenceButtonText = "Create Animation Reference Assets";
-					const string AnimationReferenceTooltipText = "AnimationReferenceAsset acts as Unity asset for a reference to a Spine.Animation. This can be used in inspectors.\n\nIt serializes  a reference to a SkeletonDataAsset and an animationName.\n\nAt runtime, a reference to its Spine.Animation is loaded and cached into the object to be used as needed. This skips the need to find and cache animation references in individual MonoBehaviours.";
+					const string AnimationReferenceTooltipText = "AnimationReferenceAsset acts as Unity asset for a reference to a Spine.Animation. This can be used in inspectors.\n\nIt serializes a reference to a SkeletonDataAsset and an animationName.\n\nAt runtime, a reference to its Spine.Animation is loaded and cached into the object to be used as needed. This skips the need to find and cache animation references in individual MonoBehaviours.";
 					if (GUILayout.Button(SpineInspectorUtility.TempContent(AnimationReferenceButtonText, Icons.animationRoot, AnimationReferenceTooltipText), GUILayout.Width(250), GUILayout.Height(26))) {
 						CreateAnimationReferenceAssets();
 					}
@@ -273,7 +277,7 @@ namespace Spine.Unity.Editor {
 		}
 
 		void OnInspectorGUIMulti () {
-			
+
 			// Skeleton data file field.
 			using (new SpineInspectorUtility.BoxScope()) {
 				EditorGUILayout.LabelField("SkeletonData", EditorStyles.boldLabel);
@@ -317,6 +321,12 @@ namespace Spine.Unity.Editor {
 				}
 			}
 			EditorGUILayout.PropertyField(skeletonJSON, SpineInspectorUtility.TempContent(skeletonJSON.displayName, Icons.spine));
+
+			if (compatibilityProblemInfo != null) {
+				EditorGUILayout.LabelField(SpineInspectorUtility.TempContent(compatibilityProblemInfo.DescriptionString(), Icons.warning), GUILayout.Height(52));
+				return;
+			}
+
 			EditorGUILayout.DelayedFloatField(scale); //EditorGUILayout.PropertyField(scale);
 			EditorGUILayout.Space();
 			EditorGUILayout.PropertyField(skeletonDataModifiers, true);
@@ -376,7 +386,7 @@ namespace Spine.Unity.Editor {
 				using (new SpineInspectorUtility.IndentScope())
 					SpineInspectorUtility.PropertyFieldWideLabel(defaultMix, DefaultMixLabel, 160);
 
-				
+
 				if (fromAnimation.arraySize > 0) {
 					using (new SpineInspectorUtility.IndentScope()) {
 						EditorGUILayout.LabelField("Custom Mix Durations", EditorStyles.boldLabel);
@@ -400,7 +410,7 @@ namespace Spine.Unity.Editor {
 							}
 						}
 					}
-				}				
+				}
 
 				using (new EditorGUILayout.HorizontalScope()) {
 					EditorGUILayout.Space();
@@ -426,7 +436,7 @@ namespace Spine.Unity.Editor {
 				return;
 
 			bool isPreviewWindowOpen = preview.IsValid;
-			
+
 			if (isPreviewWindowOpen) {
 				if (GUILayout.Button(SpineInspectorUtility.TempContent("Setup Pose", Icons.skeleton), GUILayout.Width(105), GUILayout.Height(18))) {
 					preview.ClearAnimationSetupPose();
@@ -480,60 +490,46 @@ namespace Spine.Unity.Editor {
 							int attachmentCount = skin.Attachments.Count;
 							EditorGUILayout.LabelField(SpineInspectorUtility.TempContent(string.Format("{0} ({1} attachment{2})", skin.Name, attachmentCount, SpineInspectorUtility.PluralThenS(attachmentCount)), Icons.skin));
 						}
-							
+
 					}
 				}
 
-				var slotAttachments = new List<Attachment>();
-				var slotAttachmentNames = new List<string>();
-				var defaultSkinAttachmentNames = new List<string>();
+				var slotAttachments = new List<Skin.SkinEntry>();
+				var defaultSkinAttachments = new List<Skin.SkinEntry>();
 				var slotsItems = preview.Skeleton.Slots.Items;
 				for (int i = preview.Skeleton.Slots.Count - 1; i >= 0; i--) {
 					Slot slot = slotsItems[i];
 					EditorGUILayout.LabelField(SpineInspectorUtility.TempContent(slot.Data.Name, Icons.slot));
 					if (showAttachments) {
 						slotAttachments.Clear();
-						slotAttachmentNames.Clear();
-						defaultSkinAttachmentNames.Clear();
+						defaultSkinAttachments.Clear();
 
 						using (new SpineInspectorUtility.IndentScope()) {
 							{
-								var skinEntries = new List<Skin.SkinEntry>();
-								skin.GetAttachments(i, skinEntries);
-								foreach (var entry in skinEntries) {
-									slotAttachments.Add(entry.Attachment);
-									slotAttachmentNames.Add(entry.Name);
-								}
-
-								if (skin != defaultSkin) {
-									skinEntries.Clear();
-									defaultSkin.GetAttachments(i, skinEntries);
-									foreach (var entry in skinEntries) {
-										slotAttachments.Add(entry.Attachment);
-										slotAttachmentNames.Add(entry.Name);
-										defaultSkinAttachmentNames.Add(entry.Name);
+								skin.GetAttachments(i, slotAttachments);
+								if (defaultSkin != null) {
+									if (skin != defaultSkin) {
+										defaultSkin.GetAttachments(i, slotAttachments);
+										defaultSkin.GetAttachments(i, defaultSkinAttachments);
 									}
-
-								} else {
-									skinEntries.Clear();
-									defaultSkin.GetAttachments(i, skinEntries);
-									foreach (var entry in skinEntries) {
-										defaultSkinAttachmentNames.Add(entry.Name);
+									else {
+										defaultSkin.GetAttachments(i, defaultSkinAttachments);
 									}
 								}
 							}
 
 							for (int a = 0; a < slotAttachments.Count; a++) {
-								Attachment attachment = slotAttachments[a];
-								string attachmentName = slotAttachmentNames[a];
-								bool attachmentIsFromSkin = !defaultSkinAttachmentNames.Contains(attachmentName);
+								var skinEntry = slotAttachments[a];
+								Attachment attachment = skinEntry.Attachment;
+								string attachmentName = skinEntry.Name;
+								bool attachmentIsFromSkin = !defaultSkinAttachments.Contains(skinEntry);
 
 								Texture2D attachmentTypeIcon = Icons.GetAttachmentIcon(attachment);
 								bool initialState = slot.Attachment == attachment;
 
 								Texture2D iconToUse = attachmentIsFromSkin ? Icons.skinPlaceholder : attachmentTypeIcon;
 								bool toggled = EditorGUILayout.ToggleLeft(SpineInspectorUtility.TempContent(attachmentName, iconToUse), slot.Attachment == attachment, GUILayout.MinWidth(150f));
-								
+
 								if (attachmentIsFromSkin) {
 									Rect extraIconRect = GUILayoutUtility.GetLastRect();
 									extraIconRect.x += extraIconRect.width - (attachmentTypeIcon.width * 2f);
@@ -552,7 +548,7 @@ namespace Spine.Unity.Editor {
 					}
 				}
 			}
-			
+
 		}
 
 		void DrawUnityTools () {
@@ -595,12 +591,14 @@ namespace Spine.Unity.Editor {
 
 		void PopulateWarnings () {
 			warnings.Clear();
+			compatibilityProblemInfo = null;
 
 			if (skeletonJSON.objectReferenceValue == null) {
 				warnings.Add("Missing Skeleton JSON");
 			} else {
 				var fieldValue = (TextAsset)skeletonJSON.objectReferenceValue;
-				if (!AssetUtility.IsSpineData(fieldValue)) {
+				
+				if (!AssetUtility.IsSpineData(fieldValue, out compatibilityProblemInfo)) {
 					warnings.Add("Skeleton data file is not a valid Spine JSON or binary file.");
 				} else {
 					#if SPINE_TK2D
@@ -652,7 +650,7 @@ namespace Spine.Unity.Editor {
 								foreach (string missingRegion in missingPaths)
 									warnings.Add(string.Format("Missing Region: '{0}'", missingRegion));
 							}
-							
+
 						}
 					}
 
@@ -671,13 +669,17 @@ namespace Spine.Unity.Editor {
 			EditorPrefs.SetString(LastSkinKey, skinName);
 		}
 
+		bool NoProblems() {
+			return warnings.Count == 0 && compatibilityProblemInfo == null;
+		}
+
 		#region Preview Handlers
 		void HandleOnDestroyPreview () {
 			EditorApplication.update -= preview.HandleEditorUpdate;
 			preview.OnDestroy();
 		}
 
-		override public bool HasPreviewGUI () {			
+		override public bool HasPreviewGUI () {
 			if (serializedObject.isEditingMultipleObjects)
 				return false;
 
@@ -691,7 +693,7 @@ namespace Spine.Unity.Editor {
 		}
 
 		override public void OnInteractivePreviewGUI (Rect r, GUIStyle background) {
-			if (warnings.Count <= 0) {
+			if (NoProblems()) {
 				preview.Initialize(this.Repaint, targetSkeletonDataAsset, this.LastSkinName);
 				preview.HandleInteractivePreviewGUI(r, background);
 			}
@@ -713,10 +715,7 @@ namespace Spine.Unity.Editor {
 		SkeletonAnimation skeletonAnimation;
 		GameObject previewGameObject;
 		internal bool requiresRefresh;
-
-		#if !SPINE_UNITY_2018_PREVIEW_API
 		float animationLastTime;
-		#endif
 
 		static float CurrentTime { get { return (float)EditorApplication.timeSinceStartup; } }
 
@@ -810,9 +809,7 @@ namespace Spine.Unity.Editor {
 
 			if (previewRenderUtility == null) {
 				previewRenderUtility = new PreviewRenderUtility(true);
-				#if !SPINE_UNITY_2018_PREVIEW_API
 				animationLastTime = CurrentTime;
-				#endif
 
 				const int PreviewLayer = 30;
 				const int PreviewCameraCullingMask = 1 << PreviewLayer;
@@ -900,14 +897,12 @@ namespace Spine.Unity.Editor {
 				var renderer = go.GetComponent<Renderer>();
 				renderer.enabled = true;
 
-				
+
 				if (!EditorApplication.isPlaying) {
-					#if !SPINE_UNITY_2018_PREVIEW_API
 					float current = CurrentTime;
 					float deltaTime = (current - animationLastTime);
 					skeletonAnimation.Update(deltaTime);
 					animationLastTime = current;
-					#endif
 					skeletonAnimation.LateUpdate();
 				}
 
@@ -1026,7 +1021,7 @@ namespace Spine.Unity.Editor {
 				if (isEmpty) {
 					skeleton.SetToSetupPose();
 					animationState.SetAnimation(0, targetAnimation, loop);
-				} else {					
+				} else {
 					bool sameAnimation = (currentTrack.Animation == targetAnimation);
 					if (sameAnimation) {
 						currentTrack.TimeScale = (currentTrack.TimeScale == 0) ? 1f : 0f; // pause/play

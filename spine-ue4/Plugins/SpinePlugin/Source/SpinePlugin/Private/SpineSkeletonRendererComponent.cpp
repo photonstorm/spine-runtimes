@@ -206,7 +206,7 @@ void USpineSkeletonRendererComponent::UpdateMesh(Skeleton* Skeleton) {
 	unsigned short quadIndices[] = { 0, 1, 2, 0, 2, 3 };
 
 	for (size_t i = 0; i < Skeleton->getSlots().size(); ++i) {
-		Vector<float> &attachmentVertices = worldVertices;
+		Vector<float> *attachmentVertices = &worldVertices;
 		unsigned short* attachmentIndices = nullptr;
 		int numVertices;
 		int numIndices;
@@ -223,8 +223,14 @@ void USpineSkeletonRendererComponent::UpdateMesh(Skeleton* Skeleton) {
 			continue;
 		}
 
-		if (!attachment) continue;
-		if (!attachment->getRTTI().isExactly(RegionAttachment::rtti) && !attachment->getRTTI().isExactly(MeshAttachment::rtti) && !attachment->getRTTI().isExactly(ClippingAttachment::rtti)) continue;		
+		if (!attachment) {
+			clipper.clipEnd(*slot);
+			continue;
+		}
+		if (!attachment->getRTTI().isExactly(RegionAttachment::rtti) && !attachment->getRTTI().isExactly(MeshAttachment::rtti) && !attachment->getRTTI().isExactly(ClippingAttachment::rtti)) {
+			clipper.clipEnd(*slot);
+			continue;
+		}
 		
 		if (attachment->getRTTI().isExactly(RegionAttachment::rtti)) {
 			RegionAttachment* regionAttachment = (RegionAttachment*)attachment;
@@ -237,7 +243,7 @@ void USpineSkeletonRendererComponent::UpdateMesh(Skeleton* Skeleton) {
 
 			attachmentColor.set(regionAttachment->getColor());
 			attachmentAtlasRegion = (AtlasRegion*)regionAttachment->getRendererObject();
-			regionAttachment->computeWorldVertices(slot->getBone(), attachmentVertices, 0, 2);
+			regionAttachment->computeWorldVertices(slot->getBone(), *attachmentVertices, 0, 2);
 			attachmentIndices = quadIndices;
 			attachmentUvs = regionAttachment->getUVs().buffer();
 			numVertices = 4;
@@ -253,7 +259,7 @@ void USpineSkeletonRendererComponent::UpdateMesh(Skeleton* Skeleton) {
 
 			attachmentColor.set(mesh->getColor());
 			attachmentAtlasRegion = (AtlasRegion*)mesh->getRendererObject();			
-			mesh->computeWorldVertices(*slot, 0, mesh->getWorldVerticesLength(), attachmentVertices, 0, 2);
+			mesh->computeWorldVertices(*slot, 0, mesh->getWorldVerticesLength(), *attachmentVertices, 0, 2);
 			attachmentIndices = mesh->getTriangles().buffer();
 			attachmentUvs = mesh->getUVs().buffer();
 			numVertices = mesh->getWorldVerticesLength() >> 1;
@@ -270,34 +276,52 @@ void USpineSkeletonRendererComponent::UpdateMesh(Skeleton* Skeleton) {
 		UMaterialInstanceDynamic* material = nullptr;
 		switch (slot->getData().getBlendMode()) {
 		case BlendMode_Normal:
-			if (!pageToNormalBlendMaterial.Contains(attachmentAtlasRegion->page)) continue;
+			if (!pageToNormalBlendMaterial.Contains(attachmentAtlasRegion->page)) {
+				clipper.clipEnd(*slot);
+				continue;
+			}
 			material = pageToNormalBlendMaterial[attachmentAtlasRegion->page];
 			break;
 		case BlendMode_Additive:
-			if (!pageToAdditiveBlendMaterial.Contains(attachmentAtlasRegion->page)) continue;
+			if (!pageToAdditiveBlendMaterial.Contains(attachmentAtlasRegion->page)) {
+				clipper.clipEnd(*slot);
+				continue;
+			}
 			material = pageToAdditiveBlendMaterial[attachmentAtlasRegion->page];
 			break;
 		case BlendMode_Multiply:
-			if (!pageToMultiplyBlendMaterial.Contains(attachmentAtlasRegion->page)) continue;
+			if (!pageToMultiplyBlendMaterial.Contains(attachmentAtlasRegion->page)) {
+				clipper.clipEnd(*slot);
+				continue;
+			}
 			material = pageToMultiplyBlendMaterial[attachmentAtlasRegion->page];
 			break;
 		case BlendMode_Screen:
-			if (!pageToScreenBlendMaterial.Contains(attachmentAtlasRegion->page)) continue;
+			if (!pageToScreenBlendMaterial.Contains(attachmentAtlasRegion->page)) {
+				clipper.clipEnd(*slot);
+				continue;
+			}
 			material = pageToScreenBlendMaterial[attachmentAtlasRegion->page];
 			break;
 		default:
-			if (!pageToNormalBlendMaterial.Contains(attachmentAtlasRegion->page)) continue;
+			if (!pageToNormalBlendMaterial.Contains(attachmentAtlasRegion->page)) {
+				clipper.clipEnd(*slot);
+				continue;
+			}
 			material = pageToNormalBlendMaterial[attachmentAtlasRegion->page];
 		}
 
 		if (clipper.isClipping()) {
-			clipper.clipTriangles(attachmentVertices.buffer(), attachmentIndices, numIndices, attachmentUvs, 2);
-			attachmentVertices = clipper.getClippedVertices();
+			clipper.clipTriangles(attachmentVertices->buffer(), attachmentIndices, numIndices, attachmentUvs, 2);
+			attachmentVertices = &clipper.getClippedVertices();
 			numVertices = clipper.getClippedVertices().size() >> 1;
 			attachmentIndices = clipper.getClippedTriangles().buffer();
 			numIndices = clipper.getClippedTriangles().size();
 			attachmentUvs = clipper.getClippedUVs().buffer();
-			if (clipper.getClippedTriangles().size() == 0) continue;
+			if (clipper.getClippedTriangles().size() == 0) {
+				clipper.clipEnd(*slot);
+				continue;
+			}
 		}
 
 		if (lastMaterial != material) {
@@ -317,10 +341,11 @@ void USpineSkeletonRendererComponent::UpdateMesh(Skeleton* Skeleton) {
 		float dg = slot->hasDarkColor() ? slot->getDarkColor().g : 0.0f;
 		float db = slot->hasDarkColor() ? slot->getDarkColor().b : 0.0f;		
 
+		float* verticesPtr = attachmentVertices->buffer();
 		for (int j = 0; j < numVertices << 1; j += 2) {
 			colors.Add(FColor(r, g, b, a));
 			darkColors.Add(FVector(dr, dg, db));
-			vertices.Add(FVector(attachmentVertices[j], depthOffset, attachmentVertices[j + 1]));
+			vertices.Add(FVector(verticesPtr[j], depthOffset, verticesPtr[j + 1]));
 			normals.Add(FVector(0, -1, 0));
 			uvs.Add(FVector2D(attachmentUvs[j], attachmentUvs[j + 1]));
 		}

@@ -43,10 +43,6 @@
 #define NEWHIERARCHYWINDOWCALLBACKS
 #endif
 
-#if UNITY_2018_3_OR_NEWER
-#define NEW_PREFERENCES_SETTINGS_PROVIDER
-#endif
-
 using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
@@ -154,11 +150,11 @@ namespace Spine.Unity.Editor {
 		internal static void SetAsmdefFileActive (string filename, bool setActive) {
 
 			string typeSearchString = setActive ? " t:TextAsset" : " t:AssemblyDefinitionAsset";
-			string extensionBeforeChange = setActive ? "txt" : "asmdef";
+			string extensionBeforeChange = setActive ? ".txt" : ".asmdef";
 			string[] guids = AssetDatabase.FindAssets(filename + typeSearchString);
 			foreach (string guid in guids) {
 				string currentPath = AssetDatabase.GUIDToAssetPath(guid);
-				if (!System.IO.Path.HasExtension(extensionBeforeChange)) // asmdef is also found as t:TextAsset, so check
+				if (System.IO.Path.GetExtension(currentPath) != extensionBeforeChange) // asmdef is also found as t:TextAsset, so check
 					continue;
 
 				string targetPath = System.IO.Path.ChangeExtension(currentPath, setActive ? "asmdef" : "txt");

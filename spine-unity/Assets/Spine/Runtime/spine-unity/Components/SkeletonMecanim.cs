@@ -116,7 +116,7 @@ namespace Spine.Unity {
 			public MixBlend[] layerBlendModes = new MixBlend[0];
 			#endregion
 
-			public enum MixMode { AlwaysMix, MixNext, SpineStyle }
+			public enum MixMode { AlwaysMix, MixNext, Hard }
 
 			readonly Dictionary<int, Spine.Animation> animationTable = new Dictionary<int, Spine.Animation>(IntEqualityComparer.Instance);
 			readonly Dictionary<AnimationClip, int> clipNameHashCodeTable = new Dictionary<AnimationClip, int>(AnimationClipEqualityComparer.Instance);
@@ -161,7 +161,7 @@ namespace Spine.Unity {
 			public void Apply (Skeleton skeleton) {
 				if (layerMixModes.Length < animator.layerCount) {
 					System.Array.Resize<MixMode>(ref layerMixModes, animator.layerCount);
-					layerMixModes[animator.layerCount-1] = MixMode.SpineStyle;
+					layerMixModes[animator.layerCount-1] = MixMode.MixNext;
 				}
 
 			#if UNITY_EDITOR
@@ -196,7 +196,7 @@ namespace Spine.Unity {
 						bool isInterruptionActive, shallInterpolateWeightTo1;
 						GetAnimatorClipInfos(layer, out isInterruptionActive, out clipInfoCount, out nextClipInfoCount, out interruptingClipInfoCount,
 											out clipInfo, out nextClipInfo, out interruptingClipInfo, out shallInterpolateWeightTo1);
-						
+
 						for (int c = 0; c < clipInfoCount; c++) {
 							var info = clipInfo[c];
 							float weight = info.weight * layerWeight; if (weight == 0) continue;
@@ -233,9 +233,9 @@ namespace Spine.Unity {
 					AnimatorStateInfo interruptingStateInfo;
 					float interruptingClipTimeAddition;
 					GetAnimatorStateInfos(layer, out isInterruptionActive, out stateInfo, out nextStateInfo, out interruptingStateInfo, out interruptingClipTimeAddition);
-					
+
 					bool hasNext = nextStateInfo.fullPathHash != 0;
-					
+
 					int clipInfoCount, nextClipInfoCount, interruptingClipInfoCount;
 					IList<AnimatorClipInfo> clipInfo, nextClipInfo, interruptingClipInfo;
 					bool shallInterpolateWeightTo1;
@@ -266,8 +266,8 @@ namespace Spine.Unity {
 																interruptingStateInfo.loop, null, weight, layerBlendMode, MixDirection.In);
 							}
 						}
-					} else { // case MixNext || SpineStyle
-							 // Apply first non-zero weighted clip
+					} else { // case MixNext || Hard
+						// Apply first non-zero weighted clip
 						int c = 0;
 						for (; c < clipInfoCount; c++) {
 							var info = clipInfo[c]; float weight = info.weight * layerWeight; if (weight == 0) continue;
@@ -283,7 +283,7 @@ namespace Spine.Unity {
 						c = 0;
 						if (hasNext) {
 							// Apply next clip directly instead of mixing (ie: no crossfade, ignores mecanim transition weights)
-							if (mode == MixMode.SpineStyle) {
+							if (mode == MixMode.Hard) {
 								for (; c < nextClipInfoCount; c++) {
 									var info = nextClipInfo[c]; float weight = info.weight * layerWeight; if (weight == 0) continue;
 									GetAnimation(info.clip).Apply(skeleton, 0, AnimationTime(nextStateInfo.normalizedTime, info.clip.length, nextStateInfo.speed < 0), nextStateInfo.loop, null, 1f, layerBlendMode, MixDirection.In);
@@ -300,7 +300,7 @@ namespace Spine.Unity {
 						c = 0;
 						if (isInterruptionActive) {
 							// Apply next clip directly instead of mixing (ie: no crossfade, ignores mecanim transition weights)
-							if (mode == MixMode.SpineStyle) {
+							if (mode == MixMode.Hard) {
 								for (; c < interruptingClipInfoCount; c++) {
 									var info = interruptingClipInfo[c];
 									float clipWeight = shallInterpolateWeightTo1 ? (info.weight + 1.0f) * 0.5f : info.weight;
@@ -380,7 +380,7 @@ namespace Spine.Unity {
 		#endif
 
 			void GetStateUpdatesFromAnimator (int layer) {
-				
+
 				var layerInfos = layerClipInfos[layer];
 				int clipInfoCount = animator.GetCurrentAnimatorClipInfoCount(layer);
 				int nextClipInfoCount = animator.GetNextAnimatorClipInfoCount(layer);

@@ -38,10 +38,6 @@
 #define NEWPLAYMODECALLBACKS
 #endif
 
-#if UNITY_2018_3 || UNITY_2019 || UNITY_2018_3_OR_NEWER
-#define NEW_PREFAB_SYSTEM
-#endif
-
 #if UNITY_2018 || UNITY_2019 || UNITY_2018_3_OR_NEWER
 #define NEWHIERARCHYWINDOWCALLBACKS
 #endif
@@ -69,7 +65,7 @@ namespace Spine.Unity.Editor {
 		public static string editorPath = "";
 		public static string editorGUIPath = "";
 		public static bool initialized;
-	
+
 		// Auto-import entry point
 		static void OnPostprocessAllAssets (string[] imported, string[] deleted, string[] moved, string[] movedFromAssetPaths) {
 			if (imported.Length == 0)
@@ -85,7 +81,7 @@ namespace Spine.Unity.Editor {
 
 		static void Initialize () {
 			if (EditorApplication.isPlayingOrWillChangePlaymode) return;
-			
+
 			#if !NEW_PREFERENCES_SETTINGS_PROVIDER
 			Preferences.Load();
 			#else
@@ -97,8 +93,13 @@ namespace Spine.Unity.Editor {
 			editorPath = Path.GetDirectoryName(assetPath).Replace("\\", "/");
 
 			assets = AssetDatabase.FindAssets("t:texture icon-subMeshRenderer");
-			assetPath = AssetDatabase.GUIDToAssetPath(assets[0]);
-			editorGUIPath = Path.GetDirectoryName(assetPath).Replace("\\", "/");
+			if (assets.Length > 0) {
+				assetPath = AssetDatabase.GUIDToAssetPath(assets[0]);
+				editorGUIPath = Path.GetDirectoryName(assetPath).Replace("\\", "/");
+			}
+			else {
+				editorGUIPath = editorPath.Replace("/Utility", "/GUI");
+			}
 			Icons.Initialize();
 
 			// Drag and Drop
@@ -150,9 +151,12 @@ namespace Spine.Unity.Editor {
 
 		public static void IssueWarningsForUnrecommendedTextureSettings() {
 
-			string[] atlasDescriptionGUIDs = AssetDatabase.FindAssets("t:textasset .atlas"); // Note: finds .atlas.txt files
+			string[] atlasDescriptionGUIDs = AssetDatabase.FindAssets("t:textasset .atlas"); // Note: finds ".atlas.txt" but also ".atlas 1.txt" files.
 			for (int i = 0; i < atlasDescriptionGUIDs.Length; ++i) {
 				string atlasDescriptionPath = AssetDatabase.GUIDToAssetPath(atlasDescriptionGUIDs[i]);
+				if (!atlasDescriptionPath.EndsWith(".atlas.txt"))
+					continue;
+
 				string texturePath = atlasDescriptionPath.Replace(".atlas.txt", ".png");
 
 				bool textureExists = IssueWarningsForUnrecommendedTextureSettings(texturePath);

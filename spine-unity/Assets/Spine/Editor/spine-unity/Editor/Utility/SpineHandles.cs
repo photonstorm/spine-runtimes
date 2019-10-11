@@ -31,22 +31,6 @@
 
 #define SPINE_SKELETONMECANIM
 
-#if UNITY_2017_2_OR_NEWER
-#define NEWPLAYMODECALLBACKS
-#endif
-
-#if UNITY_2018_3 || UNITY_2019 || UNITY_2018_3_OR_NEWER
-#define NEW_PREFAB_SYSTEM
-#endif
-
-#if UNITY_2018 || UNITY_2019 || UNITY_2018_3_OR_NEWER
-#define NEWHIERARCHYWINDOWCALLBACKS
-#endif
-
-#if UNITY_2018_3_OR_NEWER
-#define NEW_PREFERENCES_SETTINGS_PROVIDER
-#endif
-
 using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
@@ -65,7 +49,7 @@ namespace Spine.Unity.Editor {
 		public static Color PathColor { get { return new Color(254/255f, 127/255f, 0); } }
 		public static Color TransformContraintColor { get { return new Color(170/255f, 226/255f, 35/255f); } }
 		public static Color IkColor { get { return new Color(228/255f,90/255f,43/255f); } }
-		public static Color PointColor { get { return new Color(1f, 1f, 0f, 1f);  } }
+		public static Color PointColor { get { return new Color(1f, 1f, 0f, 1f); } }
 
 		static Vector3[] _boneMeshVerts = {
 			new Vector3(0, 0, 0),
